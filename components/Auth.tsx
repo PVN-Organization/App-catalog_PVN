@@ -5,35 +5,53 @@ const FINAL_REDIRECT_URL = 'https://catalog-app-110937670224.us-west1.run.app';
 
 const Auth: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [technicalErrorDetails, setTechnicalErrorDetails] = useState<Record<string, string> | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Parse error from URL on component mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const errorDescription = params.get('error_description');
-    
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const hashErrorDescription = hashParams.get('error_description');
 
-    const finalError = errorDescription || hashErrorDescription;
+    const getParam = (name: string) => params.get(name) || hashParams.get(name);
 
-    if (finalError) {
-      const decodedError = decodeURIComponent(finalError.replace(/\+/g, ' '));
+    const errorDescription = getParam('error_description');
+
+    if (errorDescription) {
+      const decodedError = decodeURIComponent(errorDescription.replace(/\+/g, ' '));
       
-      if (decodedError.includes('AADSTS9002325')) {
+      if (decodedError.includes('Error getting user email from external provider')) {
+        setErrorMessage(`**Nguyên nhân gốc rễ:** Ứng dụng của bạn trên Azure AD chưa được **phê duyệt** quyền truy cập vào email người dùng.
+
+**Cách khắc phục DỨT ĐIỂM:**
+1.  Mở trang **Azure AD** > **App registrations** > ứng dụng của bạn.
+2.  Vào mục **API permissions**.
+3.  **KIỂM TRA CỘT "STATUS":** Tìm các quyền \`email\` và \`User.Read\`. Cột "Status" bên cạnh chúng phải hiển thị **dấu tick màu xanh lá cây** và có chữ **"Granted for..."**.
+4.  **NẾU KHÔNG CÓ DẤU TICK XANH:** Nhấn nút **"Grant admin consent for [Tên tổ chức]"** ở phía trên danh sách. Nút này phải được nhấn bởi một quản trị viên.
+
+Sau khi tất cả các quyền cần thiết đều có dấu tick xanh, lỗi này sẽ được giải quyết. Vấn đề này nằm ở cấu hình Azure, không phải lỗi mã nguồn.`);
+      } else if (decodedError.includes('AADSTS9002325')) {
           setErrorMessage(`Lỗi cấu hình xác thực. Có sự không khớp giữa loại ứng dụng trên Azure AD và cài đặt trên Supabase. Vui lòng kiểm tra kỹ:
 1) Trên Azure AD: Ứng dụng phải được đăng ký dưới nền tảng "Web" (XÓA nền tảng "SPA" nếu có).
 2) Trên Supabase: Trường "Secret Value" phải được điền chính xác với giá trị đã tạo trên Azure AD.`);
-      } else if (decodedError.includes('Error getting user email from external provider')) {
-        setErrorMessage(`Lỗi cấp quyền API. Supabase đã xác thực thành công nhưng không có quyền đọc thông tin người dùng từ Microsoft. Vui lòng kiểm tra lại:
-1) Trên Azure AD, vào mục "API permissions".
-2) Nhấn "+ Add a permission", chọn "Microsoft Graph", rồi "Delegated permissions".
-3) Thêm các quyền: "email", "openid", "profile", và "User.Read".
-4) Quan trọng: Nhấn nút "Grant admin consent for..." để cấp quyền cho toàn bộ tổ chức.`);
       } else {
           setErrorMessage(`Lỗi đăng nhập: ${decodedError}.`);
       }
       
+      // Collect all technical details for debugging
+      const details: Record<string, string> = {};
+      const errorKeys = ['error', 'error_description', 'error_codes', 'timestamp', 'trace_id', 'correlation_id'];
+      errorKeys.forEach(key => {
+          const value = getParam(key);
+          if (value) {
+              details[key] = decodeURIComponent(value.replace(/\+/g, ' '));
+          }
+      });
+
+      if (Object.keys(details).length > 0) {
+          setTechnicalErrorDetails(details);
+      }
+
       window.history.replaceState(null, '', window.location.pathname);
     }
   }, []);
@@ -42,11 +60,13 @@ const Auth: React.FC = () => {
   const handleLogin = async () => {
     setIsLoading(true);
     setErrorMessage(null);
+    setTechnicalErrorDetails(null);
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'azure',
       options: {
         redirectTo: FINAL_REDIRECT_URL,
+        scopes: 'email openid profile User.Read',
       },
     });
 
@@ -86,6 +106,23 @@ const Auth: React.FC = () => {
           <div className="mt-6 text-sm text-left text-red-700 bg-red-100 p-3 rounded-md border border-red-200">
             <p className="font-semibold">Đã xảy ra sự cố</p>
             <p className="mt-1 whitespace-pre-wrap">{errorMessage}</p>
+            {technicalErrorDetails && (
+              <details className="mt-3" open>
+                <summary className="cursor-pointer font-medium text-xs text-gray-600 hover:text-gray-800">
+                  Chi tiết kỹ thuật
+                </summary>
+                <div className="mt-2 p-2 bg-red-50 rounded-md text-xs text-gray-700 border border-red-100">
+                  <ul className="space-y-1">
+                    {Object.entries(technicalErrorDetails).map(([key, value]) => (
+                      <li key={key} className="font-mono break-words">
+                        <strong className="font-semibold">{key}:</strong>
+                        <span className="block">{value}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </details>
+            )}
           </div>
         )}
       </div>
