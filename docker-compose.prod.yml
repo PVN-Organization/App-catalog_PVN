@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  catalog-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: catalog-app
+    ports:
+      - "10002:10002"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:10002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - catalog-network
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  catalog-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
