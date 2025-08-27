@@ -38,7 +38,6 @@ Sau khi tất cả các quyền cần thiết đều có dấu tick xanh, lỗi 
           setErrorMessage(`Lỗi đăng nhập: ${decodedError}.`);
       }
       
-      // Collect all technical details for debugging
       const details: Record<string, string> = {};
       const errorKeys = ['error', 'error_description', 'error_codes', 'timestamp', 'trace_id', 'correlation_id'];
       errorKeys.forEach(key => {
@@ -78,54 +77,86 @@ Sau khi tất cả các quyền cần thiết đều có dấu tick xanh, lỗi 
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="p-8 bg-white rounded-lg shadow-xl max-w-sm w-full text-center border-t-4 border-blue-600">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">Dashboard Ứng dụng số PVN</h1>
-        <p className="text-gray-600 mb-8">Vui lòng đăng nhập bằng tài khoản Microsoft để tiếp tục.</p>
-        <button
-          onClick={handleLogin}
-          disabled={isLoading}
-          className="w-full inline-flex justify-center items-center px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-150 ease-in-out disabled:bg-blue-400 disabled:cursor-not-allowed"
-        >
-          {isLoading ? (
-            <>
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Đang chuyển hướng...
-            </>
-          ) : (
-            <>
-              <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M11.53 21.5H3.5V13.47H11.53V21.5M20.5 21.5H12.47V13.47H20.5V21.5M11.53 12.53H3.5V4.5H11.53V12.53M20.5 12.53H12.47V4.5H20.5V12.53Z"></path></svg>
-              Đăng nhập với Microsoft
-            </>
-          )}
-        </button>
-        {errorMessage && (
-          <div className="mt-6 text-sm text-left text-red-700 bg-red-100 p-3 rounded-md border border-red-200">
-            <p className="font-semibold">Đã xảy ra sự cố</p>
-            <p className="mt-1 whitespace-pre-wrap">{errorMessage}</p>
-            {technicalErrorDetails && (
-              <details className="mt-3" open>
-                <summary className="cursor-pointer font-medium text-xs text-gray-600 hover:text-gray-800">
-                  Chi tiết kỹ thuật
-                </summary>
-                <div className="mt-2 p-2 bg-red-50 rounded-md text-xs text-gray-700 border border-red-100">
-                  <ul className="space-y-1">
-                    {Object.entries(technicalErrorDetails).map(([key, value]) => (
-                      <li key={key} className="font-mono break-words">
-                        <strong className="font-semibold">{key}:</strong>
-                        <span className="block">{value}</span>
-                      </li>
-                    ))}
-                  </ul>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-800 p-4 relative">
+        <div className="w-full max-w-md mx-auto text-center">
+            {/* Logo */}
+            <div className="flex flex-col items-center mb-6">
+                <div className="w-24 h-24 bg-[#0A2259] rounded-full flex items-center justify-center shadow-lg">
+                    {/* A simplified representation of the "50" logo with a flame element */}
+                     <svg width="60" height="60" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <text x="15" y="85" fontFamily="Arial, sans-serif" fontWeight="bold" fontSize="70" fill="#D4AF37">5</text>
+                        <text x="60" y="85" fontFamily="Arial, sans-serif" fontWeight="bold" fontSize="70" fill="#D4AF37">0</text>
+                        <path d="M78 65 C 78 55, 93 55, 93 65 C 103 80, 78 95, 78 95 C 78 95, 53 80, 63 65 C 63 55, 78 55, 78 65 Z" fill="#FBBF24"/>
+                    </svg>
                 </div>
-              </details>
-            )}
-          </div>
-        )}
-      </div>
+                <p className="text-xs font-bold text-[#0A2259] tracking-widest mt-2">PETROVIETNAM</p>
+            </div>
+
+            {/* Titles */}
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold text-[#0A2259] mb-2">Hệ thống quản lý ứng dụng số PetroVietnam</h1>
+                <p className="text-gray-600">Đăng nhập để sử dụng hệ thống</p>
+            </div>
+
+            {/* Login Section */}
+            <div className="w-full">
+                <h2 className="text-lg font-semibold text-center mb-4">Đăng nhập với tài khoản Microsoft</h2>
+                <button
+                    onClick={handleLogin}
+                    disabled={isLoading}
+                    className="w-full inline-flex justify-center items-center px-6 py-3 bg-[#0A2259] text-white font-semibold rounded-lg shadow-md hover:bg-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-150 ease-in-out disabled:bg-blue-400 disabled:cursor-not-allowed"
+                >
+                    {isLoading ? (
+                        <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Đang chuyển hướng...
+                        </>
+                    ) : (
+                        <>
+                             <svg className="w-6 h-6 mr-3" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M11.53 21.5H3.5V13.47H11.53V21.5M20.5 21.5H12.47V13.47H20.5V21.5M11.53 12.53H3.5V4.5H11.53V12.53M20.5 12.53H12.47V4.5H20.5V12.53Z"></path></svg>
+                            Đăng nhập với Microsoft
+                        </>
+                    )}
+                </button>
+                {errorMessage && (
+                    <div className="mt-6 text-sm text-left text-red-700 bg-red-100 p-3 rounded-md border border-red-200">
+                        <p className="font-semibold">Đã xảy ra sự cố</p>
+                        <p className="mt-1 whitespace-pre-wrap">{errorMessage}</p>
+                        {technicalErrorDetails && (
+                            <details className="mt-3" open>
+                                <summary className="cursor-pointer font-medium text-xs text-gray-600 hover:text-gray-800">
+                                    Chi tiết kỹ thuật
+                                </summary>
+                                <div className="mt-2 p-2 bg-red-50 rounded-md text-xs text-gray-700 border border-red-100">
+                                    <ul className="space-y-1">
+                                        {Object.entries(technicalErrorDetails).map(([key, value]) => (
+                                            <li key={key} className="font-mono break-words">
+                                                <strong className="font-semibold">{key}:</strong>
+                                                <span className="block">{value}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </details>
+                        )}
+                    </div>
+                )}
+            </div>
+            
+            {/* Info Text */}
+            <div className="text-gray-500 text-sm mt-12 space-y-1">
+                <p>Sử dụng tài khoản Microsoft của bạn để đăng nhập an toàn</p>
+                <p>Dữ liệu của bạn được bảo mật theo tiêu chuẩn doanh nghiệp</p>
+            </div>
+        </div>
+
+        {/* Footer */}
+        <footer className="absolute bottom-6 text-gray-600 text-sm">
+            PetroVietnam © 2025  ·  50 năm phát triển
+        </footer>
     </div>
   );
 };
