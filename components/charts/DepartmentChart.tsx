@@ -9,8 +9,8 @@ interface Props {
 const DepartmentChart: React.FC<Props> = ({ initiatives }) => {
   const chartData = useMemo(() => {
     const deptCounts = initiatives.reduce((acc, item) => {
-      if (item.banChuTri) {
-        acc[item.banChuTri] = (acc[item.banChuTri] || 0) + 1;
+      if (item.ban_chu_tri) {
+        acc[item.ban_chu_tri] = (acc[item.ban_chu_tri] || 0) + 1;
       }
       return acc;
     }, {} as Record<string, number>);

@@ -9,7 +9,7 @@ interface Props {
 const ClassificationChart: React.FC<Props> = ({ initiatives }) => {
   const chartData = useMemo(() => {
     const classificationCounts = initiatives.reduce((acc, item) => {
-      const classification = item.phanLoai || "Chưa xác định";
+      const classification = item.phan_loai || "Chưa xác định";
       acc[classification] = (acc[classification] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);

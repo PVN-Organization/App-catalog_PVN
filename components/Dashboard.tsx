@@ -22,6 +22,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ session }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingInitiative, setEditingInitiative] = useState<Initiative | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [isError, setIsError] = useState(false);
@@ -36,8 +37,20 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedClassification, setSelectedClassification] = useState('');
 
-  const openModal = () => setIsModalOpen(true);
-  const closeModal = () => setIsModalOpen(false);
+  const openModal = () => {
+    setEditingInitiative(null);
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (initiative: Initiative) => {
+    setEditingInitiative(initiative);
+    setIsModalOpen(true);
+  };
+  
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingInitiative(null);
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -58,19 +71,19 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
         if (data) {
             const mappedData: Initiative[] = data.map(item => ({
-                tenChinhThuc: item['Tên chính thức SKS/công cụ'] || '',
-                tenNganGon: item['Tên ngắn gọn'] || '',
-                moTa: item['Mô tả SKS/công cụ'] || '',
-                phanLoai: item['Phân loại'] || '',
-                congNghe: item['Công nghệ/Nền tảng'] || '',
-                doiTuong: item['Đối tượng sử dụng'] || '',
-                giaiDoan: item['Giai đoạn triển khai'] || '',
-                linhVuc: typeof item['Phân loại lĩnh vực'] === 'string' 
-                    ? item['Phân loại lĩnh vực'] 
-                    : JSON.stringify(item['Phân loại lĩnh vực']) || '',
-                link: item['Link truy cập'] || '',
-                banChuTri: item['Ban chủ trì'] || '',
-                fileUrl: item['file_url'] || '',
+                ten_chinh_thuc: item.ten_chinh_thuc || '',
+                ten_ngan_gon: item.ten_ngan_gon || '',
+                mo_ta: item.mo_ta || '',
+                phan_loai: item.phan_loai || '',
+                cong_nghe: item.cong_nghe || '',
+                doi_tuong: item.doi_tuong || '',
+                giai_doan: item.giai_doan || '',
+                linh_vuc: typeof item.linh_vuc === 'string' 
+                    ? item.linh_vuc 
+                    : JSON.stringify(item.linh_vuc) || '',
+                link_truy_cap: item.link_truy_cap || '',
+                ban_chu_tri: item.ban_chu_tri || '',
+                file_url: item.file_url || '',
             }));
             setInitiatives(mappedData);
             setStatusMessage('');
@@ -91,9 +104,9 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
   // Memoize filter options based on dynamic data
   const filterOptions = useMemo(() => {
-    const departments = [...new Set(initiatives.map(item => item.banChuTri).filter(Boolean))].sort();
-    const statuses = [...new Set(initiatives.map(item => item.giaiDoan).filter(Boolean))].sort();
-    const classifications = [...new Set(initiatives.map(item => item.phanLoai).filter(Boolean))].sort();
+    const departments = [...new Set(initiatives.map(item => item.ban_chu_tri).filter(Boolean))].sort();
+    const statuses = [...new Set(initiatives.map(item => item.giai_doan).filter(Boolean))].sort();
+    const classifications = [...new Set(initiatives.map(item => item.phan_loai).filter(Boolean))].sort();
     return { departments, statuses, classifications };
   }, [initiatives]);
 
@@ -102,13 +115,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     return initiatives.filter(item => {
       const lowerSearchTerm = searchTerm.toLowerCase();
       const matchesSearch = (
-        (item.tenNganGon || '').toLowerCase().includes(lowerSearchTerm) ||
-        (item.tenChinhThuc || '').toLowerCase().includes(lowerSearchTerm) ||
-        (item.moTa || '').toLowerCase().includes(lowerSearchTerm)
+        (item.ten_ngan_gon || '').toLowerCase().includes(lowerSearchTerm) ||
+        (item.ten_chinh_thuc || '').toLowerCase().includes(lowerSearchTerm) ||
+        (item.mo_ta || '').toLowerCase().includes(lowerSearchTerm)
       );
-      const matchesDept = !selectedDept || item.banChuTri === selectedDept;
-      const matchesStatus = !selectedStatus || item.giaiDoan === selectedStatus;
-      const matchesClassification = !selectedClassification || item.phanLoai === selectedClassification;
+      const matchesDept = !selectedDept || item.ban_chu_tri === selectedDept;
+      const matchesStatus = !selectedStatus || item.giai_doan === selectedStatus;
+      const matchesClassification = !selectedClassification || item.phan_loai === selectedClassification;
 
       return matchesSearch && matchesDept && matchesStatus && matchesClassification;
     });
@@ -118,190 +131,245 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
   const stats = useMemo(() => {
     const data = filteredInitiatives;
     const total = data.length;
-    const departments = [...new Set(data.map(item => item.banChuTri).filter(Boolean))].length;
-    const deployed = data.filter(item => item.giaiDoan === 'Đã đưa vào sử dụng').length;
-    const inProgress = data.filter(item => ['Đang triển khai', 'Đang phát triển'].includes(item.giaiDoan)).length;
+    const departments = [...new Set(data.map(item => item.ban_chu_tri).filter(Boolean))].length;
+    const deployed = data.filter(item => item.giai_doan === 'Đã đưa vào sử dụng').length;
+    const inProgress = data.filter(item => ['Đang triển khai', 'Đang phát triển'].includes(item.giai_doan)).length;
     return { total, departments, deployed, inProgress };
   }, [filteredInitiatives]);
 
-  const handleSubmit = useCallback(async (product: Product, file: File | null) => {
+  const handleSave = useCallback(async (product: Product, file: File | null) => {
     setIsLoading(true);
     setStatusMessage('Đang xử lý...');
     setIsError(false);
 
     try {
-      let fileUrl: string | null = null;
+        let fileUrl: string | null = editingInitiative ? editingInitiative.file_url || null : null;
       
-      if (file) {
-        setStatusMessage('Đang tải tệp lên SharePoint...');
-        fileUrl = await uploadFileToSharePoint(file);
-        if (!fileUrl) {
-            throw new Error('Không thể tải tệp lên SharePoint.');
+        if (file) {
+            setStatusMessage('Đang tải tệp lên SharePoint...');
+            fileUrl = await uploadFileToSharePoint(file);
         }
-      }
 
-      setStatusMessage('Đang lưu thông tin sản phẩm...');
-      const productDataForDb = {
-        "Tên chính thức SKS/công cụ": product.tieuDe,
-        "Tên ngắn gọn": product.tenNgan,
-        "Ban chủ trì": product.banChuTri,
-        "Giai đoạn triển khai": product.giaiDoan,
-        "Phân loại": product.phanLoai,
-        "Công nghệ/Nền tảng": product.congNghe,
-        "Link truy cập": product.lienKet,
-        "Mô tả SKS/công cụ": product.moTa,
-        "file_url": fileUrl,
-      };
+        const productDataForDb = {
+            ten_chinh_thuc: product.tieuDe,
+            ten_ngan_gon: product.tenNgan,
+            ban_chu_tri: product.banChuTri,
+            giai_doan: product.giaiDoan,
+            phan_loai: product.phanLoai,
+            cong_nghe: product.congNghe,
+            link_truy_cap: product.lienKet,
+            mo_ta: product.moTa,
+            file_url: fileUrl,
+        };
+        
+        if (editingInitiative) {
+            setStatusMessage('Đang cập nhật thông tin sản phẩm...');
+            const { error: updateError, count } = await supabase
+                .from('Catalog_data')
+                .update(productDataForDb)
+                .eq('ten_chinh_thuc', editingInitiative.ten_chinh_thuc);
+            
+            if (updateError) {
+                throw new Error(`Lỗi cập nhật dữ liệu: ${updateError.message}`);
+            }
+            
+            if (count === 0) {
+                 throw new Error('Cập nhật thất bại. Không có sản phẩm nào được cập nhật. Nguyên nhân có thể là do bạn không có quyền (chính sách RLS) hoặc sản phẩm không tồn tại.');
+            }
 
-      const { error: insertError } = await supabase
-        .from('Catalog_data')
-        .insert([productDataForDb] as any);
+            setStatusMessage('Cập nhật sản phẩm thành công! Đang làm mới...');
+        } else {
+            setStatusMessage('Đang lưu thông tin sản phẩm...');
+            const { error: insertError } = await supabase
+                .from('Catalog_data')
+                .insert([productDataForDb]);
 
-      if (insertError) {
-        throw new Error(`Lỗi lưu dữ liệu: ${insertError.message}`);
-      }
+            if (insertError) {
+                throw new Error(`Lỗi lưu dữ liệu: ${insertError.message}`);
+            }
+            setStatusMessage('Thêm sản phẩm thành công! Đang làm mới...');
+        }
 
-      setStatusMessage('Thêm sản phẩm thành công! Đang làm mới dashboard...');
-      setIsError(false);
-      closeModal();
-      await fetchInitiatives(); // REFRESH DATA!
-      setTimeout(() => setStatusMessage(''), 3000);
+        setIsError(false);
+        closeModal();
+        await fetchInitiatives(); // REFRESH DATA!
+        setTimeout(() => setStatusMessage(''), 3000);
 
     } catch (error) {
-      console.error('Lỗi khi thêm sản phẩm:', error);
+      console.error('Lỗi khi lưu sản phẩm:', error);
       const errorMessage = error instanceof Error ? error.message : 'Vui lòng kiểm tra console.';
-      setStatusMessage(`Thêm sản phẩm thất bại: ${errorMessage}`);
+      setStatusMessage(`Lưu sản phẩm thất bại: ${errorMessage}`);
       setIsError(true);
     } finally {
       setIsLoading(false);
     }
-  }, [fetchInitiatives]);
+  }, [editingInitiative, fetchInitiatives]);
 
+  const handleDelete = useCallback(async (initiativeName: string) => {
+    const initiativeToDelete = initiatives.find(i => i.ten_chinh_thuc === initiativeName);
+    if (!initiativeToDelete) {
+      setStatusMessage('Lỗi: Không tìm thấy sản phẩm để xóa.');
+      setIsError(true);
+      return;
+    }
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${initiativeToDelete.ten_ngan_gon || initiativeToDelete.ten_chinh_thuc}"? Hành động này không thể hoàn tác.`)) {
+      return;
+    }
+
+    setIsLoading(true);
+    setStatusMessage('Đang xóa sản phẩm...');
+    setIsError(false);
+
+    try {
+      const { error: deleteError, count } = await supabase
+        .from('Catalog_data')
+        .delete()
+        .eq('ten_chinh_thuc', initiativeName);
+
+      if (deleteError) {
+        throw new Error(`Lỗi khi xóa: ${deleteError.message}`);
+      }
+      
+      if (count === 0) {
+        throw new Error('Xóa thất bại. Không có sản phẩm nào bị xóa. Nguyên nhân có thể là do bạn không có quyền (chính sách RLS) hoặc sản phẩm không tồn tại.');
+      }
+
+      setStatusMessage('Xóa sản phẩm thành công! Đang làm mới...');
+      setIsError(false);
+      await fetchInitiatives();
+      setTimeout(() => setStatusMessage(''), 3000);
+
+    } catch (error) {
+      console.error('Lỗi khi xóa sản phẩm:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Vui lòng kiểm tra console.';
+      setStatusMessage(`Xóa sản phẩm thất bại: ${errorMessage}`);
+      setIsError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [initiatives, fetchInitiatives]);
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-gray-100">
       {/* Header */}
-      <header className="mb-8 flex flex-wrap justify-between items-center gap-4">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">Dashboard theo dõi Ứng dụng số PVN</h1>
-          <p className="text-gray-600 mt-2">Theo dõi tổng quan và tìm kiếm thông tin các Ứng dụng số tại PVN.</p>
-        </div>
-        <div className="flex items-center space-x-4">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-gray-800 truncate" title={session.user.email}>{session.user.email}</p>
+      <header className="bg-white shadow-sm sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-4">
+              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+              <h1 className="text-xl font-bold text-gray-800">Dashboard Ứng dụng số PVN</h1>
             </div>
-            <button
-                onClick={fetchInitiatives}
-                disabled={isFetching}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                {isFetching ? 'Đang tải...' : 'Làm mới dữ liệu'}
-            </button>
-            <button
-                onClick={openModal}
-                className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition"
-            >
-                Thêm sản phẩm
-            </button>
-             <button
-                onClick={handleLogout}
-                title="Đăng xuất"
-                aria-label="Đăng xuất"
-                className="p-2 bg-white border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-red-600 transition"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-            </button>
+            <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-600 hidden sm:block">
+                  Xin chào, <span className="font-semibold">{session.user.email}</span>
+                </span>
+                <button 
+                  onClick={handleLogout} 
+                  className="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg text-sm hover:bg-red-600 transition"
+                  title="Đăng xuất"
+                >
+                  Đăng xuất
+                </button>
+            </div>
+          </div>
         </div>
       </header>
-      
-       {statusMessage && (
-            <p className={`mb-4 text-sm font-medium text-center p-3 rounded-lg ${isError ? 'text-red-700 bg-red-100' : 'text-green-700 bg-green-100'}`}>
-                {statusMessage}
-            </p>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <StatCard icon={<RocketIcon />} value={stats.total} label="Tổng số sáng kiến" color="blue" />
+          <StatCard icon={<BuildingIcon />} value={stats.departments} label="Số ban tham gia" color="indigo" />
+          <StatCard icon={<CheckIcon />} value={stats.deployed} label="Đã đưa vào sử dụng" color="green" />
+          <StatCard icon={<WrenchIcon />} value={stats.inProgress} label="Đang triển khai" color="yellow" />
+        </div>
+        
+        {/* Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div className="bg-white p-6 rounded-xl shadow-md col-span-1 lg:col-span-1 h-80 flex flex-col">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">Phân loại Sáng kiến</h3>
+                <div className="flex-grow relative">{!isFetching && <ClassificationChart initiatives={filteredInitiatives} />}</div>
+            </div>
+            <div className="bg-white p-6 rounded-xl shadow-md col-span-1 lg:col-span-1 h-80 flex flex-col">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">Trạng thái Triển khai</h3>
+                <div className="flex-grow relative">{!isFetching && <StatusChart initiatives={filteredInitiatives} />}</div>
+            </div>
+            <div className="bg-white p-6 rounded-xl shadow-md col-span-1 lg:col-span-1 h-80 flex flex-col">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">Sáng kiến theo Ban</h3>
+                <div className="flex-grow relative">{!isFetching && <DepartmentChart initiatives={filteredInitiatives} />}</div>
+            </div>
+        </div>
+        
+        {/* Filters and Actions */}
+        <div className="bg-white p-4 rounded-xl shadow-md mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4 items-end">
+                <div className="md:col-span-2 lg:col-span-2">
+                    <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">Tìm kiếm</label>
+                    <input type="text" id="search" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Nhập tên, mô tả..." className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
+                </div>
+                 <div>
+                    <label htmlFor="dept" className="block text-sm font-medium text-gray-700 mb-1">Ban chủ trì</label>
+                    <select id="dept" value={selectedDept} onChange={e => setSelectedDept(e.target.value)} className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <option value="">Tất cả</option>
+                        {filterOptions.departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+                    </select>
+                </div>
+                 <div>
+                    <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
+                    <select id="status" value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <option value="">Tất cả</option>
+                        {filterOptions.statuses.map(status => <option key={status} value={status}>{status}</option>)}
+                    </select>
+                </div>
+                <div className="lg:col-span-1">
+                    <button onClick={openModal} className="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-150 ease-in-out">
+                        Thêm sản phẩm
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        {/* Loading/Error/Empty State */}
+        {isFetching ? (
+            <div className="text-center p-10 bg-white rounded-xl shadow-md">
+                <p className="text-gray-600 font-semibold">{statusMessage || "Đang tải danh sách sản phẩm..."}</p>
+            </div>
+        ) : isError ? (
+            <div className="text-center p-10 bg-red-50 border border-red-200 text-red-700 rounded-xl shadow-md">
+                <p className="font-bold">Đã xảy ra lỗi</p>
+                <p>{statusMessage}</p>
+                <button onClick={fetchInitiatives} className="mt-4 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Thử lại</button>
+            </div>
+        ) : filteredInitiatives.length === 0 ? (
+           <div className="text-center p-10 bg-white rounded-xl shadow-md">
+             <h3 className="text-xl font-bold text-gray-800 mb-2">Chưa có sản phẩm nào</h3>
+             <p className="text-gray-500 max-w-2xl mx-auto">Hiện không có sản phẩm nào trong danh mục hoặc không có quyền xem. Vui lòng kiểm tra lại chính sách RLS trên Supabase hoặc nhấn 'Thêm sản phẩm' để bắt đầu.</p>
+           </div>
+        ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredInitiatives.map((item) => (
+                    <InitiativeCard key={item.ten_chinh_thuc} initiative={item} onEdit={handleEdit} onDelete={handleDelete} />
+                ))}
+            </div>
         )}
+      </main>
 
-      {/* Stats Section */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard icon={<RocketIcon />} value={stats.total} label="Tổng Sáng kiến" color="blue" />
-        <StatCard icon={<CheckIcon />} value={stats.deployed} label="Đã triển khai" color="green" />
-        <StatCard icon={<WrenchIcon />} value={stats.inProgress} label="Đang thực hiện" color="yellow" />
-        <StatCard icon={<BuildingIcon />} value={stats.departments} label="Ban tham gia" color="indigo" />
-      </section>
-
-      {/* Charts Section */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-md">
-              <h3 className="text-lg font-semibold mb-4">Sáng kiến theo Giai đoạn</h3>
-              <div className="h-80"><StatusChart initiatives={initiatives} /></div>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow-md">
-              <h3 className="text-lg font-semibold mb-4">Sáng kiến theo Phân loại</h3>
-              <div className="h-80"><ClassificationChart initiatives={initiatives} /></div>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow-md">
-              <h3 className="text-lg font-semibold mb-4">Sáng kiến theo Ban chủ trì</h3>
-              <div className="h-80"><DepartmentChart initiatives={initiatives} /></div>
-          </div>
-      </section>
-      
-      {/* Filters */}
-      <div className="mb-8 p-6 bg-white rounded-xl shadow-md">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tìm kiếm</label>
-            <input type="text" placeholder="Tìm theo tên, mô tả..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"/>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Lọc theo Ban chủ trì</label>
-            <select value={selectedDept} onChange={e => setSelectedDept(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
-              <option value="">Tất cả các Ban</option>
-              {filterOptions.departments.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Lọc theo Giai đoạn</label>
-            <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
-              <option value="">Tất cả giai đoạn</option>
-              {filterOptions.statuses.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Lọc theo Phân loại</label>
-            <select value={selectedClassification} onChange={e => setSelectedClassification(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
-              <option value="">Tất cả phân loại</option>
-              {filterOptions.classifications.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-        </div>
-      </div>
-      
-      {/* Initiatives Grid */}
-      {isFetching ? (
-         <div className="text-center py-16">
-          <p className="text-xl font-semibold text-gray-600">Đang tải dữ liệu...</p>
-        </div>
-      ) : filteredInitiatives.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredInitiatives.map((item, index) => (
-            <InitiativeCard key={`${item.tenChinhThuc}-${index}`} initiative={item} />
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-16">
-          <p className="text-xl font-semibold text-gray-600">Không tìm thấy sáng kiến nào</p>
-          <p className="text-gray-500">Vui lòng thử lại với từ khóa hoặc bộ lọc khác, hoặc thêm sản phẩm mới.</p>
-        </div>
-      )}
-
-      {/* Modal */}
-      <ProductModal 
+      <ProductModal
         isOpen={isModalOpen}
         onClose={closeModal}
-        onSubmit={handleSubmit}
+        onSubmit={handleSave}
         isLoading={isLoading}
+        initiativeToEdit={editingInitiative}
       />
+
+       {/* Status Snackbar */}
+        {statusMessage && !isFetching && (
+            <div className={`fixed bottom-5 right-5 px-6 py-3 rounded-lg shadow-lg text-white ${isError ? 'bg-red-500' : 'bg-green-500'}`}>
+                {statusMessage}
+            </div>
+        )}
     </div>
   );
 };

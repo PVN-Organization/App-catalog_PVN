@@ -9,7 +9,7 @@ interface Props {
 const StatusChart: React.FC<Props> = ({ initiatives }) => {
   const chartData = useMemo(() => {
     const statusCounts = initiatives.reduce((acc, item) => {
-      const status = item.giaiDoan || "Chưa xác định";
+      const status = item.giai_doan || "Chưa xác định";
       acc[status] = (acc[status] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);

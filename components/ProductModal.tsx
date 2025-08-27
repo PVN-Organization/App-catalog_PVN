@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useRef } from 'react';
-import type { Product, ProductModalProps } from '../types';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import type { Product, ProductModalProps, Initiative } from '../types';
 import FormSection from './FormSection';
 import TextInput from './TextInput';
 
@@ -14,11 +14,36 @@ const initialProductState: Product = {
   moTa: '',
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, isLoading }) => {
+const mapInitiativeToProduct = (initiative: Initiative): Product => ({
+  tieuDe: initiative.ten_chinh_thuc,
+  tenNgan: initiative.ten_ngan_gon,
+  banChuTri: initiative.ban_chu_tri,
+  giaiDoan: initiative.giai_doan,
+  phanLoai: initiative.phan_loai,
+  congNghe: initiative.cong_nghe,
+  lienKet: initiative.link_truy_cap,
+  moTa: initiative.mo_ta,
+});
+
+
+const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, isLoading, initiativeToEdit }) => {
   const [product, setProduct] = useState<Product>(initialProductState);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const isEditMode = Boolean(initiativeToEdit);
+
+  useEffect(() => {
+    if (isOpen) {
+        if (isEditMode && initiativeToEdit) {
+            setProduct(mapInitiativeToProduct(initiativeToEdit));
+        } else {
+            setProduct(initialProductState);
+        }
+    }
+  }, [initiativeToEdit, isEditMode, isOpen]);
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -47,7 +72,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
 
   const handleClose = () => {
     if (isLoading) return;
-    setProduct(initialProductState);
+    // The parent component now handles resetting initiativeToEdit, which triggers the useEffect.
+    // We just need to clear fields not covered by that.
     setFile(null);
     setError(null);
     if(fileInputRef.current) {
@@ -62,7 +88,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-full overflow-y-auto">
         <div className="p-6 border-b flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800">Thêm sản phẩm</h2>
+          <h2 className="text-xl font-bold text-gray-800">{isEditMode ? 'Chỉnh sửa sản phẩm' : 'Thêm sản phẩm'}</h2>
           <button onClick={handleClose} className="text-gray-400 hover:text-gray-600" disabled={isLoading}>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -108,7 +134,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
                  onChange={handleFileChange}
                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
               />
-              {file && <p className="text-sm text-gray-500 mt-2">Đã chọn: {file.name}</p>}
+              {!file && initiativeToEdit?.file_url && (
+                <p className="text-sm text-gray-500 mt-2">
+                    Tệp hiện tại: <a href={initiativeToEdit.file_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{initiativeToEdit.file_url.split(/[\\/]/).pop()}</a>
+                </p>
+              )}
+              {file && <p className="text-sm text-gray-500 mt-2">Tệp mới: {file.name}</p>}
             </FormSection>
 
             {error && <p className="text-sm text-red-600">{error}</p>}
@@ -122,7 +153,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
               disabled={isLoading}
               className="px-4 py-2 bg-blue-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Đang thêm...' : 'Thêm'}
+              {isLoading ? (isEditMode ? 'Đang lưu...' : 'Đang thêm...') : (isEditMode ? 'Lưu thay đổi' : 'Thêm')}
             </button>
           </div>
         </form>

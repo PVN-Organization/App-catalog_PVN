@@ -6,7 +6,7 @@ export interface SelectOption {
 }
 
 export interface FormSectionProps {
-  label: string;
+  label:string;
   children: React.ReactNode;
 }
 
@@ -45,21 +45,22 @@ export interface ProductModalProps {
   onClose: () => void;
   onSubmit: (product: Product, file: File | null) => Promise<void>;
   isLoading: boolean;
+  initiativeToEdit?: Initiative | null;
 }
 
 // New types for Dashboard
 export interface Initiative {
-  tenChinhThuc: string;
-  tenNganGon: string;
-  moTa: string;
-  phanLoai: string;
-  congNghe: string;
-  doiTuong: string;
-  giaiDoan: string;
-  linhVuc: string;
-  link: string;
-  banChuTri: string;
-  fileUrl?: string;
+  ten_chinh_thuc: string;
+  ten_ngan_gon: string;
+  mo_ta: string;
+  phan_loai: string;
+  cong_nghe: string;
+  doi_tuong: string;
+  giai_doan: string;
+  linh_vuc: string;
+  link_truy_cap: string;
+  ban_chu_tri: string;
+  file_url?: string;
 }
 
 export interface StatCardProps {
@@ -71,4 +72,6 @@ export interface StatCardProps {
 
 export interface InitiativeCardProps {
   initiative: Initiative;
+  onEdit: (initiative: Initiative) => void;
+  onDelete: (initiativeName: string) => void;
 }
