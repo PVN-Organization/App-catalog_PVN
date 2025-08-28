@@ -1,0 +1,119 @@
+name: Deploy Catalog App to Production (Working Pattern)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions: write-all
+
+env:
+  DEPLOYMENT_URL: "http://171.244.49.215:10002"
+  CONTAINER_NAME: catalog-app
+  PORT: 10002
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies
+      run: npm install --legacy-peer-deps
+      
+    - name: Build application
+      run: npm run build
+
+  deploy:
+    needs: test
+    runs-on: self-hosted
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Deploy
+        run: |
+          echo "🚀 Starting deployment..."
+          
+          # Stop and remove existing containers
+          docker stop ${{ env.CONTAINER_NAME }} || true
+          docker rm ${{ env.CONTAINER_NAME }} || true
+          
+          # Build new image
+          IMAGE_TAG="catalog-app-$(date '+%Y%m%d_%H%M%S')"
+          docker build -t $IMAGE_TAG .
+          
+          # Start new container
+          docker run -d \
+            --name ${{ env.CONTAINER_NAME }} \
+            --restart unless-stopped \
+            -p ${{ env.PORT }}:${{ env.PORT }} \
+            -e NODE_ENV=production \
+            -e DEPLOY_VERSION=${{ github.sha }} \
+            -e DEPLOY_TIME="$(date '+%Y-%m-%d %H:%M:%S')" \
+            $IMAGE_TAG
+
+          # Wait for the health check
+          echo "Waiting for application to be ready..."
+          
+          # Try up to 10 times, waiting 10 seconds between attempts
+          for i in {1..10}; do
+            echo "Attempt $i of 10..."
+            sleep 10
+            if docker ps --filter "name=${{ env.CONTAINER_NAME }}" --filter "status=running" | grep -q "${{ env.CONTAINER_NAME }}"; then
+              if curl -s -f http://localhost:${{ env.PORT }}/health > /dev/null; then
+                echo "✅ Container is healthy!"
+                break
+              fi
+            fi
+            if [ $i -eq 10 ]; then
+              echo "❌ Container failed to become healthy after 10 attempts"
+              docker logs ${{ env.CONTAINER_NAME }}
+              exit 1
+            fi
+          done
+
+          # Final health check
+          if curl -s -f http://localhost:${{ env.PORT }}/health > /dev/null; then
+            echo "Application deployed successfully!"
+            echo "DEPLOYMENT_URL=${{ env.DEPLOYMENT_URL }}" >> $GITHUB_ENV
+          else
+            echo "Deployment failed - health check failed"
+            docker logs ${{ env.CONTAINER_NAME }}
+            exit 1
+          fi
+
+          # Cleanup old images
+          echo "🧹 Cleaning up old images..."
+          docker images --format "{{.Repository}}:{{.Tag}}" | grep "^catalog-app-" | tail -n +4 | xargs -r docker rmi || true
+          docker image prune -f
+
+      - name: Verify Deployment
+        run: |
+          if curl -s -f ${{ env.DEPLOYMENT_URL }}/health > /dev/null; then
+            echo "✅ Application is accessible at: ${{ env.DEPLOYMENT_URL }}"
+          else
+            echo "❌ Application is not accessible"
+            exit 1
+          fi
+
+      - name: Deployment Status
+        if: always()
+        run: |
+          if [[ "$?" == "0" ]]; then
+            echo "::notice::🚀 Deployment successful! Your application is live at ${{ env.DEPLOYMENT_URL }}"
+          else
+            echo "::error::💥 Deployment failed. Check the logs for more details"
+          fi
