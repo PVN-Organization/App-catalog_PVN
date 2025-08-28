@@ -1,0 +1,116 @@
+name: Health Check and Monitoring
+
+on:
+  schedule:
+    # Run health check every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      check_type:
+        description: 'Type of health check'
+        required: true
+        default: 'basic'
+        type: choice
+        options:
+        - basic
+        - comprehensive
+        - performance
+
+jobs:
+  health-check:
+    runs-on: [self-hosted, ATM-5500721-01]
+    
+    steps:
+    - name: Basic Health Check
+      run: |
+        echo "🏥 Performing health check..."
+        
+        # Check if container is running
+        if ! docker ps --filter "name=catalog-app" --format "table {{.Names}}\t{{.Status}}" | grep -q "catalog-app"; then
+          echo "❌ Container is not running!"
+          exit 1
+        fi
+        
+        # Check health endpoint
+        response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:10002/health || echo "000")
+        if [ "$response" != "200" ]; then
+          echo "❌ Health endpoint returned: $response"
+          exit 1
+        fi
+        
+        echo "✅ Basic health check passed"
+        
+    - name: Comprehensive Check
+      if: github.event.inputs.check_type == 'comprehensive' || github.event.inputs.check_type == 'performance'
+      run: |
+        echo "🔍 Performing comprehensive health check..."
+        
+        # Check container resource usage
+        echo "📊 Container resource usage:"
+        docker stats catalog-app --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"
+        
+        # Check disk usage
+        echo "💿 Disk usage:"
+        df -h / | tail -1
+        
+        # Check recent logs for errors
+        error_count=$(docker logs catalog-app --since="15m" 2>&1 | grep -i error | wc -l)
+        if [ "$error_count" -gt 0 ]; then
+          echo "⚠️ Found $error_count error(s) in recent logs"
+          docker logs catalog-app --since="15m" --tail=5 | grep -i error
+        else
+          echo "✅ No errors in recent logs"
+        fi
+        
+        # Check network connectivity
+        if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+          echo "✅ Network connectivity OK"
+        else
+          echo "❌ Network connectivity issues"
+        fi
+        
+    - name: Performance Check
+      if: github.event.inputs.check_type == 'performance'
+      run: |
+        echo "⚡ Performing performance check..."
+        
+        # Response time check
+        response_time=$(curl -o /dev/null -s -w "%{time_total}" http://localhost:10002/health)
+        echo "🚀 Response time: ${response_time}s"
+        
+        # Memory usage threshold check (alert if > 80%)
+        mem_usage=$(docker stats catalog-app --no-stream --format "{{.MemPerc}}" | sed 's/%//')
+        if (( $(echo "$mem_usage > 80" | bc -l) )); then
+          echo "⚠️ High memory usage: ${mem_usage}%"
+        else
+          echo "✅ Memory usage OK: ${mem_usage}%"
+        fi
+        
+        # CPU usage threshold check (alert if > 80%)
+        cpu_usage=$(docker stats catalog-app --no-stream --format "{{.CPUPerc}}" | sed 's/%//')
+        if (( $(echo "$cpu_usage > 80" | bc -l) )); then
+          echo "⚠️ High CPU usage: ${cpu_usage}%"
+        else
+          echo "✅ CPU usage OK: ${cpu_usage}%"
+        fi
+        
+    - name: Auto-restart if unhealthy
+      if: failure()
+      run: |
+        echo "🔄 Health check failed, attempting auto-restart..."
+        
+        # Get container logs for debugging
+        echo "📋 Recent container logs:"
+        docker logs catalog-app --tail=20
+        
+        # Restart container
+        docker restart catalog-app
+        
+        # Wait and recheck
+        sleep 30
+        if curl -f http://localhost:10002/health >/dev/null 2>&1; then
+          echo "✅ Auto-restart successful!"
+        else
+          echo "❌ Auto-restart failed, manual intervention required"
+          exit 1
+        fi

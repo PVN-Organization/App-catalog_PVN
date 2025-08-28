@@ -1,14 +1,25 @@
-name: Deploy to Production
+name: Deploy Catalog App to Production
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  CONTAINER_NAME: catalog-app
+  PORT: 10002
+  IMAGE_TAG: catalog-app-${{ github.sha }}
 
 jobs:
   test:
@@ -25,7 +36,7 @@ jobs:
         cache: 'npm'
         
     - name: Install dependencies
-      run: npm ci
+      run: npm install
       
     - name: Run tests (if any)
       run: npm test --if-present
@@ -33,82 +44,115 @@ jobs:
     - name: Build application
       run: npm run build
 
-  build-and-push:
+  build-and-deploy:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ATM-5500721-01]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     
-    permissions:
-      contents: read
-      packages: write
-      
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set up environment variables
+      run: |
+        echo "DEPLOY_TIMESTAMP=$(date '+%Y%m%d_%H%M%S')" >> $GITHUB_ENV
+        echo "BACKUP_NAME=catalog-app-backup-$(date '+%Y%m%d_%H%M%S')" >> $GITHUB_ENV
         
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
+    - name: Create backup of current deployment
+      run: |
+        # Backup current container if exists
+        if docker ps -a --format 'table {{.Names}}' | grep -q "^${{ env.CONTAINER_NAME }}$"; then
+          echo "Creating backup of current deployment..."
+          docker commit ${{ env.CONTAINER_NAME }} ${{ env.BACKUP_NAME }} || true
+          docker save ${{ env.BACKUP_NAME }} > /tmp/${{ env.BACKUP_NAME }}.tar || true
+        fi
+        
+    - name: Stop existing container
+      run: |
+        echo "Stopping existing container..."
+        docker stop ${{ env.CONTAINER_NAME }} || true
+        docker rm ${{ env.CONTAINER_NAME }} || true
+        
+    - name: Build new Docker image
+      run: |
+        echo "Building Docker image..."
+        docker build -t ${{ env.IMAGE_TAG }} .
+        
+    - name: Run new container
+      run: |
+        echo "Starting new container..."
+        docker run -d \
+          --name ${{ env.CONTAINER_NAME }} \
+          --restart unless-stopped \
+          -p ${{ env.PORT }}:${{ env.PORT }} \
+          -e NODE_ENV=production \
+          -e DEPLOY_VERSION=${{ github.sha }} \
+          -e DEPLOY_TIME=${{ env.DEPLOY_TIMESTAMP }} \
+          ${{ env.IMAGE_TAG }}
           
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    
-    steps:
-    - name: Deploy to server
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.HOST }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSH_KEY }}
-        port: ${{ secrets.PORT }}
-        script: |
-          # Pull latest image
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          
-          # Stop and remove existing container
-          docker stop catalog-app || true
-          docker rm catalog-app || true
-          
-          # Run new container
-          docker run -d \
-            --name catalog-app \
-            --restart unless-stopped \
-            -p 10002:10002 \
-            -e NODE_ENV=production \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          
-          # Clean up old images
-          docker image prune -f
-          
-          # Health check
-          sleep 10
-          curl -f http://localhost:10002/health || exit 1
+    - name: Wait for application to start
+      run: |
+        echo "Waiting for application to start..."
+        for i in {1..30}; do
+          if curl -f http://localhost:${{ env.PORT }}/health >/dev/null 2>&1; then
+            echo "✅ Application is healthy!"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "❌ Health check failed after 30 attempts"
+            # Rollback if health check fails
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            docker rm ${{ env.CONTAINER_NAME }} || true
+            if [ -f "/tmp/${{ env.BACKUP_NAME }}.tar" ]; then
+              echo "Rolling back to previous version..."
+              docker load < /tmp/${{ env.BACKUP_NAME }}.tar
+              docker run -d --name ${{ env.CONTAINER_NAME }} --restart unless-stopped -p ${{ env.PORT }}:${{ env.PORT }} ${{ env.BACKUP_NAME }}
+            fi
+            exit 1
+          fi
+          echo "⏳ Health check attempt $i/30..."
+          sleep 2
+        done
+        
+    - name: Verify deployment
+      run: |
+        echo "Verifying deployment..."
+        
+        # Check container status
+        docker ps --filter "name=${{ env.CONTAINER_NAME }}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+        
+        # Check application response
+        response=$(curl -s http://localhost:${{ env.PORT }}/health)
+        if [ "$response" = "healthy" ]; then
+          echo "✅ Deployment verification successful!"
+        else
+          echo "❌ Deployment verification failed!"
+          exit 1
+        fi
+        
+    - name: Clean up old images
+      run: |
+        echo "Cleaning up old images..."
+        # Keep only the latest 3 images
+        docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}" | grep "catalog-app-" | tail -n +4 | awk '{print $1":"$2}' | xargs -r docker rmi || true
+        
+        # Clean up backup files older than 7 days
+        find /tmp -name "catalog-app-backup-*.tar" -mtime +7 -delete || true
+        
+        # Prune unused images
+        docker image prune -f
+        
+    - name: Send deployment notification
+      if: always()
+      run: |
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "🎉 Deployment successful!"
+          echo "📱 Application URL: http://171.244.49.215:${{ env.PORT }}"
+          echo "🔍 Health check: http://171.244.49.215:${{ env.PORT }}/health"
+          echo "📊 Container: ${{ env.CONTAINER_NAME }}"
+          echo "🏷️ Version: ${{ github.sha }}"
+          echo "⏰ Deploy time: ${{ env.DEPLOY_TIMESTAMP }}"
+        else
+          echo "❌ Deployment failed!"
+          echo "📋 Check logs: docker logs ${{ env.CONTAINER_NAME }}"
+        fi
