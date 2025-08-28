@@ -1,0 +1,184 @@
+name: Deploy via SSH (Backup)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+
+env:
+  CONTAINER_NAME: catalog-app
+  PORT: 10002
+  SERVER_IP: 171.244.49.215
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies
+      run: npm install --legacy-peer-deps
+      
+    - name: Run tests (if any)
+      run: npm test --if-present
+      
+    - name: Build application
+      run: npm run build
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-files
+        path: |
+          dist/
+          Dockerfile
+          nginx.conf
+          package.json
+          .npmrc
+        retention-days: 1
+
+  deploy-via-ssh:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-files
+        path: ./
+        
+    - name: Deploy to server via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ env.SERVER_IP }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        script: |
+          set -e
+          
+          # Variables
+          DEPLOY_DIR="/tmp/catalog-deploy-$(date +%s)"
+          BACKUP_NAME="catalog-app-backup-$(date '+%Y%m%d_%H%M%S')"
+          
+          echo "🚀 Starting deployment..."
+          echo "📁 Deploy directory: $DEPLOY_DIR"
+          
+          # Create deploy directory
+          mkdir -p $DEPLOY_DIR
+          cd $DEPLOY_DIR
+          
+          # Verify Docker is running
+          if ! docker info >/dev/null 2>&1; then
+            echo "❌ Docker is not running"
+            exit 1
+          fi
+          
+          echo "✅ Docker is running"
+          
+    - name: Copy files to server
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ env.SERVER_IP }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        source: "./*"
+        target: "/tmp/catalog-deploy"
+        
+    - name: Build and deploy on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.SERVER_IP }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            
+            # Find the latest deploy directory
+            DEPLOY_DIR=$(ls -td /tmp/catalog-deploy-* | head -n1)
+            cd $DEPLOY_DIR
+            
+            echo "📦 Working in: $DEPLOY_DIR"
+            
+            # Backup current container if exists
+            if docker ps -a --format '{{.Names}}' | grep -q "^${{ env.CONTAINER_NAME }}$"; then
+              echo "💾 Creating backup..."
+              BACKUP_NAME="catalog-app-backup-$(date '+%Y%m%d_%H%M%S')"
+              docker commit ${{ env.CONTAINER_NAME }} $BACKUP_NAME || true
+              echo $BACKUP_NAME > /tmp/latest_backup.txt
+            fi
+            
+            # Stop existing container
+            echo "🛑 Stopping existing container..."
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            docker rm ${{ env.CONTAINER_NAME }} || true
+            
+            # Build new image
+            echo "🔨 Building new image..."
+            IMAGE_TAG="catalog-app-$(date '+%Y%m%d_%H%M%S')"
+            docker build -t $IMAGE_TAG .
+            
+            # Start new container
+            echo "🚀 Starting new container..."
+            docker run -d \
+              --name ${{ env.CONTAINER_NAME }} \
+              --restart unless-stopped \
+              -p ${{ env.PORT }}:${{ env.PORT }} \
+              -e NODE_ENV=production \
+              -e DEPLOY_VERSION=${{ github.sha }} \
+              -e DEPLOY_TIME="$(date '+%Y-%m-%d %H:%M:%S')" \
+              $IMAGE_TAG
+            
+            # Health check
+            echo "🏥 Performing health check..."
+            for i in {1..30}; do
+              if curl -f http://localhost:${{ env.PORT }}/health >/dev/null 2>&1; then
+                echo "✅ Health check passed!"
+                break
+              fi
+              if [ $i -eq 30 ]; then
+                echo "❌ Health check failed after 30 attempts"
+                # Rollback
+                docker stop ${{ env.CONTAINER_NAME }} || true
+                docker rm ${{ env.CONTAINER_NAME }} || true
+                if [ -f "/tmp/latest_backup.txt" ]; then
+                  BACKUP_NAME=$(cat /tmp/latest_backup.txt)
+                  echo "🔄 Rolling back to: $BACKUP_NAME"
+                  docker run -d --name ${{ env.CONTAINER_NAME }} --restart unless-stopped -p ${{ env.PORT }}:${{ env.PORT }} $BACKUP_NAME
+                fi
+                exit 1
+              fi
+              echo "⏳ Health check attempt $i/30..."
+              sleep 2
+            done
+            
+            # Cleanup
+            echo "🧹 Cleaning up..."
+            # Keep only latest 3 images
+            docker images --format "{{.Repository}}:{{.Tag}}" | grep "^catalog-app-" | tail -n +4 | xargs -r docker rmi || true
+            docker image prune -f
+            
+            # Remove deploy directory
+            rm -rf $DEPLOY_DIR
+            
+            echo "🎉 Deployment completed successfully!"
+            echo "📱 Application URL: http://${{ env.SERVER_IP }}:${{ env.PORT }}"
+            echo "🔍 Health check: http://${{ env.SERVER_IP }}:${{ env.PORT }}/health"
