@@ -1,4 +1,4 @@
-# Hướng dẫn Deploy Catalog App
+# Hướng dẫn Deploy Catalog App v1
 
 ## Cấu trúc file deploy
 
