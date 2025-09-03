@@ -13,7 +13,9 @@ const getStatusPill = (status?: string) => {
   return <span className={`inline-block flex-shrink-0 ${classes} text-xs font-medium px-2.5 py-1 rounded-full`}>{status || 'Chưa xác định'}</span>;
 };
 
-const InitiativeCard: React.FC<InitiativeCardProps> = ({ initiative, onEdit, onDelete }) => {
+const InitiativeCard: React.FC<InitiativeCardProps> = ({ initiative, onEdit, onDelete, currentUserEmail }) => {
+  const isOwner = initiative.created_by_email === currentUserEmail;
+
   return (
     <div className="bg-white rounded-xl shadow-md p-6 flex flex-col justify-between transition-transform transform hover:-translate-y-1 hover:shadow-lg">
       <div>
@@ -30,18 +32,22 @@ const InitiativeCard: React.FC<InitiativeCardProps> = ({ initiative, onEdit, onD
              <span>{initiative.cong_nghe || 'N/A'}</span>
         </div>
         <div className="flex flex-wrap gap-4 justify-end items-center text-sm">
-            <button onClick={() => onEdit(initiative)} className="text-gray-600 hover:text-blue-600 font-semibold transition flex items-center" title="Chỉnh sửa">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
-                </svg>
-                Sửa
-            </button>
-            <button onClick={() => onDelete(initiative.ten_chinh_thuc)} className="text-gray-600 hover:text-red-600 font-semibold transition flex items-center" title="Xóa">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Xóa
-            </button>
+            {isOwner && (
+                <>
+                    <button onClick={() => onEdit(initiative)} className="text-gray-600 hover:text-blue-600 font-semibold transition flex items-center" title="Chỉnh sửa">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
+                        </svg>
+                        Sửa
+                    </button>
+                    <button onClick={() => onDelete(initiative.ten_chinh_thuc)} className="text-gray-600 hover:text-red-600 font-semibold transition flex items-center" title="Xóa">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Xóa
+                    </button>
+                </>
+            )}
             {initiative.file_url && (
                 <a href={initiative.file_url} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-blue-600 font-semibold transition flex items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
