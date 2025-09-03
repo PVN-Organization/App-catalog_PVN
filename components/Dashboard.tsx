@@ -84,6 +84,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                 link_truy_cap: item.link_truy_cap || '',
                 ban_chu_tri: item.ban_chu_tri || '',
                 file_url: item.file_url || '',
+                created_by_email: item.created_by_email || '',
             }));
             setInitiatives(mappedData);
             setStatusMessage('');
@@ -180,9 +181,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             setStatusMessage('Cập nhật sản phẩm thành công! Đang làm mới...');
         } else {
             setStatusMessage('Đang lưu thông tin sản phẩm...');
+            const dataToInsert = {
+                ...productDataForDb,
+                created_by_email: session.user.email,
+            };
             const { error: insertError } = await supabase
                 .from('Catalog_data')
-                .insert([productDataForDb]);
+                .insert([dataToInsert]);
 
             if (insertError) {
                 throw new Error(`Lỗi lưu dữ liệu: ${insertError.message}`);
@@ -203,7 +208,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [editingInitiative, fetchInitiatives]);
+  }, [editingInitiative, fetchInitiatives, session.user.email]);
 
   const handleDelete = useCallback(async (initiativeName: string) => {
     const initiativeToDelete = initiatives.find(i => i.ten_chinh_thuc === initiativeName);
@@ -350,7 +355,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredInitiatives.map((item) => (
-                    <InitiativeCard key={item.ten_chinh_thuc} initiative={item} onEdit={handleEdit} onDelete={handleDelete} />
+                    <InitiativeCard 
+                        key={item.ten_chinh_thuc} 
+                        initiative={item} 
+                        onEdit={handleEdit} 
+                        onDelete={handleDelete} 
+                        currentUserEmail={session.user.email!}
+                    />
                 ))}
             </div>
         )}

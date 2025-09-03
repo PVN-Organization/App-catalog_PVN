@@ -80,16 +80,8 @@ Sau khi tất cả các quyền cần thiết đều có dấu tick xanh, lỗi 
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-800 p-4 relative">
         <div className="w-full max-w-md mx-auto text-center">
             {/* Logo */}
-            <div className="flex flex-col items-center mb-6">
-                <div className="w-24 h-24 bg-[#0A2259] rounded-full flex items-center justify-center shadow-lg">
-                    {/* A simplified representation of the "50" logo with a flame element */}
-                     <svg width="60" height="60" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <text x="15" y="85" fontFamily="Arial, sans-serif" fontWeight="bold" fontSize="70" fill="#D4AF37">5</text>
-                        <text x="60" y="85" fontFamily="Arial, sans-serif" fontWeight="bold" fontSize="70" fill="#D4AF37">0</text>
-                        <path d="M78 65 C 78 55, 93 55, 93 65 C 103 80, 78 95, 78 95 C 78 95, 53 80, 63 65 C 63 55, 78 55, 78 65 Z" fill="#FBBF24"/>
-                    </svg>
-                </div>
-                <p className="text-xs font-bold text-[#0A2259] tracking-widest mt-2">PETROVIETNAM</p>
+            <div className="flex justify-center mb-6">
+                <img src="https://i.ibb.co/nMdwMV4S/pvn-log.png" alt="Logo PetroVietnam" className="h-24" />
             </div>
 
             {/* Titles */}

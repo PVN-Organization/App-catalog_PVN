@@ -61,6 +61,7 @@ export interface Initiative {
   link_truy_cap: string;
   ban_chu_tri: string;
   file_url?: string;
+  created_by_email?: string;
 }
 
 export interface StatCardProps {
@@ -74,4 +75,5 @@ export interface InitiativeCardProps {
   initiative: Initiative;
   onEdit: (initiative: Initiative) => void;
   onDelete: (initiativeName: string) => void;
+  currentUserEmail: string;
 }
