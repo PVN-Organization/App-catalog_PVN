@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabaseClient'; // Sử dụng client Supabase duy nhất
 
-const FINAL_REDIRECT_URL = 'https://catalog-app-110937670224.us-west1.run.app';
+const FINAL_REDIRECT_URL = 'https://catalog-app-version2-110937670224.us-west1.run.app';
 
 const Auth: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [technicalErrorDetails, setTechnicalErrorDetails] = useState<Record<string, string> | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Parse error from URL on component mount
+  // Phân tích lỗi từ URL khi component được mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -61,6 +61,7 @@ Sau khi tất cả các quyền cần thiết đều có dấu tick xanh, lỗi 
     setErrorMessage(null);
     setTechnicalErrorDetails(null);
 
+    // Sử dụng client Supabase duy nhất
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'azure',
       options: {

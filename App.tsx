@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './lib/supabaseClient';
+import { supabase } from './lib/supabaseClient'; 
 import type { Session } from '@supabase/supabase-js';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -9,21 +9,18 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const getSession = async () => {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-            console.error("Error getting session:", error);
-        }
-        setSession(session);
-        setLoading(false);
-    };
+    // Kiểm tra phiên hiện có bằng client duy nhất
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
 
-    getSession();
-
+    // Lắng nghe các thay đổi trạng thái xác thực bằng client duy nhất
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
+    // Dọn dẹp subscription khi component bị unmount
     return () => {
       subscription?.unsubscribe();
     };
