@@ -4,7 +4,7 @@
  * @returns Một promise phân giải với URL của tệp đã tải lên từ phản hồi của webhook.
  */
 export const uploadFileToSharePoint = async (file: File): Promise<string> => {
-  const webhookUrl = 'https://n8n.oilgas.ai/webhook/api/catalog_upload';
+  const webhookUrl = 'https://n8n.linhtpm.io.vn/webhook-test/api/catalog_upload';
   
   console.log(`Đang tải tệp "${file.name}" lên webhook: ${webhookUrl}`);
 
