@@ -39,6 +39,8 @@ export interface Product {
   lienKet: string;
   moTa: string;
   lien_ket_csdl: string[];
+  nhanSuDauMoi: string;
+  nhanSuPhuTrach: string;
 }
 
 export interface ProductModalProps {
@@ -65,6 +67,8 @@ export interface Initiative {
   file_url?: string;
   created_by_email?: string;
   lien_ket_csdl?: string[];
+  nhan_su_dau_moi?: string;
+  nhan_su_phu_trach?: string;
 }
 
 export interface StatCardProps {
@@ -79,10 +83,18 @@ export interface InitiativeCardProps {
   onEdit: (initiative: Initiative) => void;
   onDelete: (initiativeName: string) => void;
   onViewDatabases: (initiative: Initiative) => void;
+  onAccess: (initiative: Initiative) => void;
+  onDoubleClick: (initiative: Initiative) => void;
   currentUserEmail: string;
 }
 
 export interface DatabaseDetailModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  initiative: Initiative | null;
+}
+
+export interface ProductDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   initiative: Initiative | null;
@@ -137,4 +149,14 @@ export interface Database {
   createdAt?: string;
   updatedAt?: string;
   tables: Table[];
+}
+
+// Type for the new Admin log viewer
+export interface LogEntry {
+  log_id: string;
+  occurred_at: string;
+  level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+  source: string | null;
+  message: string;
+  metadata: Record<string, any> | null;
 }

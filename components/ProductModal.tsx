@@ -13,6 +13,8 @@ const initialProductState: Product = {
   lienKet: '',
   moTa: '',
   lien_ket_csdl: [],
+  nhanSuDauMoi: '',
+  nhanSuPhuTrach: '',
 };
 
 const mapInitiativeToProduct = (initiative: Initiative): Product => ({
@@ -25,6 +27,8 @@ const mapInitiativeToProduct = (initiative: Initiative): Product => ({
   lienKet: initiative.link_truy_cap,
   moTa: initiative.mo_ta,
   lien_ket_csdl: initiative.lien_ket_csdl || [],
+  nhanSuDauMoi: initiative.nhan_su_dau_moi || '',
+  nhanSuPhuTrach: initiative.nhan_su_phu_trach || '',
 });
 
 
@@ -112,6 +116,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
             </FormSection>
              <FormSection label="Ban chủ trì">
               <TextInput name="banChuTri" value={product.banChuTri} onChange={handleChange} />
+            </FormSection>
+             <FormSection label="Nhân sự đầu mối">
+              <TextInput name="nhanSuDauMoi" value={product.nhanSuDauMoi} onChange={handleChange} />
+            </FormSection>
+             <FormSection label="Nhân sự phụ trách">
+              <TextInput name="nhanSuPhuTrach" value={product.nhanSuPhuTrach} onChange={handleChange} />
             </FormSection>
             <FormSection label="Giai đoạn">
               <TextInput name="giaiDoan" value={product.giaiDoan} onChange={handleChange} />
