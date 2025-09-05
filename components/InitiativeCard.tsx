@@ -29,7 +29,7 @@ const InitiativeCard: React.FC<InitiativeCardProps> = ({ initiative, onEdit, onD
         <p className="text-gray-600 text-sm mb-4 h-20 overflow-auto">{initiative.mo_ta || 'Không có mô tả.'}</p>
       </div>
       <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="flex items-center space-x-2 text-xs text-gray-500 break-all mb-4">
+        <div className="flex items-center space-x-2 text-xs text-gray-500 break-words mb-4">
              <span className="font-semibold">Công nghệ:</span>
              <span>{initiative.cong_nghe || 'N/A'}</span>
         </div>
