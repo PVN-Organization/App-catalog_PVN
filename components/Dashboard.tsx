@@ -1,10 +1,12 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Product, Initiative } from '../types';
+import type { Product, Initiative, Database } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { databaseSupabase } from '../lib/databaseSupabaseClient'; 
 import { uploadFileToSharePoint } from '../lib/sharepoint';
 import type { Session } from '@supabase/supabase-js';
 
 import ProductModal from './ProductModal';
+import DatabaseDetailModal from './DatabaseDetailModal';
 import StatCard from './StatCard';
 import InitiativeCard from './InitiativeCard';
 import StatusChart from './charts/StatusChart';
@@ -27,11 +29,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
   const [statusMessage, setStatusMessage] = useState('');
   const [isError, setIsError] = useState(false);
   
-  // State for dynamic data from Supabase
   const [initiatives, setInitiatives] = useState<Initiative[]>([]);
+  const [allDatabases, setAllDatabases] = useState<Pick<Database, 'id' | 'name'>[]>([]);
   const [isFetching, setIsFetching] = useState(true);
+  const [isDataReconciled, setIsDataReconciled] = useState(false);
 
-  // State for filters
+  const [selectedInitiativeForDbView, setSelectedInitiativeForDbView] = useState<Initiative | null>(null);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDept, setSelectedDept] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
@@ -51,6 +55,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     setIsModalOpen(false);
     setEditingInitiative(null);
   };
+  
+  const handleViewDatabases = (initiative: Initiative) => {
+      setSelectedInitiativeForDbView(initiative);
+  };
+
+  const closeDbModal = () => {
+      setSelectedInitiativeForDbView(null);
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -65,9 +77,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             .from('Catalog_data')
             .select('*');
 
-        if (error) {
-            throw new Error(`Lỗi tải dữ liệu: ${error.message}`);
-        }
+        if (error) throw new Error(`Lỗi tải dữ liệu: ${error.message}`);
 
         if (data) {
             const mappedData: Initiative[] = data.map(item => ({
@@ -85,6 +95,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                 ban_chu_tri: item.ban_chu_tri || '',
                 file_url: item.file_url || '',
                 created_by_email: item.created_by_email || '',
+                lien_ket_csdl: item.lien_ket_csdl || [],
             }));
             setInitiatives(mappedData);
             setStatusMessage('');
@@ -99,11 +110,80 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     }
   }, []);
 
+   const fetchAllDatabases = useCallback(async () => {
+        try {
+            const { data, error } = await databaseSupabase
+                .from('co_so_du_lieu')
+                .select('ten_csdl');
+
+            if (error) {
+                console.warn(`Could not fetch database list: ${error.message}`);
+                return;
+            }
+            if (data) {
+                setAllDatabases(data.map(db => ({ id: db.ten_csdl, name: db.ten_csdl })));
+            }
+        } catch (error) {
+            console.warn('Failed to fetch database list.', error);
+        }
+    }, []);
+
   useEffect(() => {
     fetchInitiatives();
-  }, [fetchInitiatives]);
+    fetchAllDatabases();
+  }, [fetchInitiatives, fetchAllDatabases]);
+  
+  useEffect(() => {
+    // Run this effect only once after data is fetched and not yet reconciled.
+    if (isFetching || isDataReconciled || initiatives.length === 0 || allDatabases.length === 0) {
+        return;
+    }
 
-  // Memoize filter options based on dynamic data
+    const normalize = (str: string): string => {
+        if (!str) return '';
+        return str.toLowerCase()
+            .replace(/cơ sở dữ liệu|csdl|hệ thống|ứng dụng|pvn|quản lý/g, '')
+            .replace(/sổ tay/g, 'sotay') // Handle specific known synonyms
+            .replace(/\s+/g, ' ').trim();
+    };
+
+    const updatedInitiatives = initiatives.map(initiative => {
+        const linkedDbs = new Set<string>(initiative.lien_ket_csdl || []);
+
+        // Specific Rule from user request
+        if (initiative.ten_chinh_thuc === 'Sổ tay hoạt động chính PVN') {
+            const targetDb = allDatabases.find(db => db.name === 'Sổ tay PVN 2025');
+            if (targetDb) {
+                linkedDbs.add(targetDb.id);
+            }
+        }
+
+        // General Heuristic Rule for matching
+        const initiativeNormName = normalize(initiative.ten_ngan_gon || initiative.ten_chinh_thuc);
+        if (initiativeNormName) {
+            allDatabases.forEach(db => {
+                const dbNormName = normalize(db.name);
+                if (dbNormName && (dbNormName.includes(initiativeNormName) || initiativeNormName.includes(dbNormName))) {
+                    linkedDbs.add(db.id);
+                }
+            });
+        }
+        
+        // Only update if there are changes
+        if (linkedDbs.size > (initiative.lien_ket_csdl?.length || 0)) {
+            return {
+                ...initiative,
+                lien_ket_csdl: Array.from(linkedDbs)
+            };
+        }
+        return initiative;
+    });
+
+    setInitiatives(updatedInitiatives);
+    setIsDataReconciled(true); // Set flag to prevent re-running
+
+}, [isFetching, initiatives, allDatabases, isDataReconciled]);
+
   const filterOptions = useMemo(() => {
     const departments = [...new Set(initiatives.map(item => item.ban_chu_tri).filter(Boolean))].sort();
     const statuses = [...new Set(initiatives.map(item => item.giai_doan).filter(Boolean))].sort();
@@ -111,7 +191,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     return { departments, statuses, classifications };
   }, [initiatives]);
 
-  // Memoize filtered initiatives for performance
   const filteredInitiatives = useMemo(() => {
     return initiatives.filter(item => {
       const lowerSearchTerm = searchTerm.toLowerCase();
@@ -128,7 +207,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     });
   }, [searchTerm, selectedDept, selectedStatus, selectedClassification, initiatives]);
   
-  // Memoize stats calculation
   const stats = useMemo(() => {
     const data = filteredInitiatives;
     const total = data.length;
@@ -161,6 +239,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             link_truy_cap: product.lienKet,
             mo_ta: product.moTa,
             file_url: fileUrl,
+            lien_ket_csdl: product.lien_ket_csdl,
         };
         
         if (editingInitiative) {
@@ -170,34 +249,22 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                 .update(productDataForDb)
                 .eq('ten_chinh_thuc', editingInitiative.ten_chinh_thuc);
             
-            if (updateError) {
-                throw new Error(`Lỗi cập nhật dữ liệu: ${updateError.message}`);
-            }
-            
-            if (count === 0) {
-                 throw new Error('Cập nhật thất bại. Không có sản phẩm nào được cập nhật. Nguyên nhân có thể là do bạn không có quyền (chính sách RLS) hoặc sản phẩm không tồn tại.');
-            }
+            if (updateError) throw new Error(`Lỗi cập nhật dữ liệu: ${updateError.message}`);
+            if (count === 0) throw new Error('Cập nhật thất bại. Không có sản phẩm nào được cập nhật. Nguyên nhân có thể là do bạn không có quyền (chính sách RLS) hoặc sản phẩm không tồn tại.');
 
             setStatusMessage('Cập nhật sản phẩm thành công! Đang làm mới...');
         } else {
             setStatusMessage('Đang lưu thông tin sản phẩm...');
-            const dataToInsert = {
-                ...productDataForDb,
-                created_by_email: session.user.email,
-            };
-            const { error: insertError } = await supabase
-                .from('Catalog_data')
-                .insert([dataToInsert]);
-
-            if (insertError) {
-                throw new Error(`Lỗi lưu dữ liệu: ${insertError.message}`);
-            }
+            const dataToInsert = { ...productDataForDb, created_by_email: session.user.email };
+            const { error: insertError } = await supabase.from('Catalog_data').insert([dataToInsert]);
+            if (insertError) throw new Error(`Lỗi lưu dữ liệu: ${insertError.message}`);
             setStatusMessage('Thêm sản phẩm thành công! Đang làm mới...');
         }
 
         setIsError(false);
         closeModal();
-        await fetchInitiatives(); // REFRESH DATA!
+        await fetchInitiatives();
+        setIsDataReconciled(false); // Allow reconciliation to run again after saving
         setTimeout(() => setStatusMessage(''), 3000);
 
     } catch (error) {
@@ -232,17 +299,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         .delete()
         .eq('ten_chinh_thuc', initiativeName);
 
-      if (deleteError) {
-        throw new Error(`Lỗi khi xóa: ${deleteError.message}`);
-      }
-      
-      if (count === 0) {
-        throw new Error('Xóa thất bại. Không có sản phẩm nào bị xóa. Nguyên nhân có thể là do bạn không có quyền (chính sách RLS) hoặc sản phẩm không tồn tại.');
-      }
+      if (deleteError) throw new Error(`Lỗi khi xóa: ${deleteError.message}`);
+      if (count === 0) throw new Error('Xóa thất bại. Không có sản phẩm nào bị xóa. Nguyên nhân có thể là do bạn không có quyền (chính sách RLS) hoặc sản phẩm không tồn tại.');
 
       setStatusMessage('Xóa sản phẩm thành công! Đang làm mới...');
       setIsError(false);
       await fetchInitiatives();
+      setIsDataReconciled(false); // Allow reconciliation to run again after deleting
       setTimeout(() => setStatusMessage(''), 3000);
 
     } catch (error) {
@@ -359,7 +422,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                         key={item.ten_chinh_thuc} 
                         initiative={item} 
                         onEdit={handleEdit} 
-                        onDelete={handleDelete} 
+                        onDelete={handleDelete}
+                        onViewDatabases={handleViewDatabases}
                         currentUserEmail={session.user.email!}
                     />
                 ))}
@@ -373,6 +437,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         onSubmit={handleSave}
         isLoading={isLoading}
         initiativeToEdit={editingInitiative}
+        allDatabases={allDatabases}
+      />
+      
+      <DatabaseDetailModal
+        isOpen={!!selectedInitiativeForDbView}
+        onClose={closeDbModal}
+        initiative={selectedInitiativeForDbView}
       />
 
        {/* Status Snackbar */}

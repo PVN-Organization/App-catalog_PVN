@@ -12,6 +12,7 @@ const initialProductState: Product = {
   congNghe: '',
   lienKet: '',
   moTa: '',
+  lien_ket_csdl: [],
 };
 
 const mapInitiativeToProduct = (initiative: Initiative): Product => ({
@@ -23,10 +24,11 @@ const mapInitiativeToProduct = (initiative: Initiative): Product => ({
   congNghe: initiative.cong_nghe,
   lienKet: initiative.link_truy_cap,
   moTa: initiative.mo_ta,
+  lien_ket_csdl: initiative.lien_ket_csdl || [],
 });
 
 
-const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, isLoading, initiativeToEdit }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, isLoading, initiativeToEdit, allDatabases }) => {
   const [product, setProduct] = useState<Product>(initialProductState);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setProduct(prev => ({ ...prev, [name]: value }));
+  };
+  
+  const handleDatabaseChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+    setProduct(prev => ({ ...prev, lien_ket_csdl: selectedOptions }));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,8 +79,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
 
   const handleClose = () => {
     if (isLoading) return;
-    // The parent component now handles resetting initiativeToEdit, which triggers the useEffect.
-    // We just need to clear fields not covered by that.
     setFile(null);
     setError(null);
     if(fileInputRef.current) {
@@ -96,10 +101,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
           </button>
         </div>
         <form onSubmit={handleFormSubmit}>
-          <div className="p-6 space-y-4">
-            <FormSection label="Tiêu đề">
-              <TextInput name="tieuDe" value={product.tieuDe} onChange={handleChange} />
-            </FormSection>
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+                <FormSection label="Tiêu đề">
+                <TextInput name="tieuDe" value={product.tieuDe} onChange={handleChange} />
+                </FormSection>
+            </div>
             <FormSection label="Tên ngắn">
               <TextInput name="tenNgan" value={product.tenNgan} onChange={handleChange} />
             </FormSection>
@@ -118,31 +125,48 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
             <FormSection label="Liên kết">
               <TextInput name="lienKet" value={product.lienKet} onChange={handleChange} />
             </FormSection>
-            <FormSection label="Mô tả">
-              <textarea
-                name="moTa"
-                value={product.moTa}
-                onChange={handleChange}
-                rows={4}
-                className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              />
-            </FormSection>
-             <FormSection label="Tệp đính kèm">
-               <input 
-                 ref={fileInputRef}
-                 type="file" 
-                 onChange={handleFileChange}
-                 className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-              />
-              {!file && initiativeToEdit?.file_url && (
-                <p className="text-sm text-gray-500 mt-2">
-                    Tệp hiện tại: <a href={initiativeToEdit.file_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{initiativeToEdit.file_url.split(/[\\/]/).pop()}</a>
-                </p>
-              )}
-              {file && <p className="text-sm text-gray-500 mt-2">Tệp mới: {file.name}</p>}
-            </FormSection>
+            <div className="md:col-span-2">
+                <FormSection label="Mô tả">
+                <textarea
+                    name="moTa"
+                    value={product.moTa}
+                    onChange={handleChange}
+                    rows={3}
+                    className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+                </FormSection>
+            </div>
+             <div className="md:col-span-2">
+                 <FormSection label="CSDL liên kết (giữ Ctrl/Cmd để chọn nhiều)">
+                    <select
+                        multiple
+                        name="lien_ket_csdl"
+                        value={product.lien_ket_csdl}
+                        onChange={handleDatabaseChange}
+                        className="block w-full h-32 px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    >
+                        {allDatabases.map(db => <option key={db.id} value={db.id}>{db.name}</option>)}
+                    </select>
+                </FormSection>
+            </div>
+            <div className="md:col-span-2">
+                 <FormSection label="Tệp đính kèm">
+                   <input 
+                     ref={fileInputRef}
+                     type="file" 
+                     onChange={handleFileChange}
+                     className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                  />
+                  {!file && initiativeToEdit?.file_url && (
+                    <p className="text-sm text-gray-500 mt-2">
+                        Tệp hiện tại: <a href={initiativeToEdit.file_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{initiativeToEdit.file_url.split(/[\\/]/).pop()}</a>
+                    </p>
+                  )}
+                  {file && <p className="text-sm text-gray-500 mt-2">Tệp mới: {file.name}</p>}
+                </FormSection>
+            </div>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="md:col-span-2 text-sm text-red-600">{error}</p>}
           </div>
           <div className="p-6 bg-gray-50 border-t flex justify-end items-center space-x-3">
             <button type="button" onClick={handleClose} disabled={isLoading} className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">

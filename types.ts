@@ -38,6 +38,7 @@ export interface Product {
   congNghe: string;
   lienKet: string;
   moTa: string;
+  lien_ket_csdl: string[];
 }
 
 export interface ProductModalProps {
@@ -46,6 +47,7 @@ export interface ProductModalProps {
   onSubmit: (product: Product, file: File | null) => Promise<void>;
   isLoading: boolean;
   initiativeToEdit?: Initiative | null;
+  allDatabases: Pick<Database, 'id' | 'name'>[];
 }
 
 // New types for Dashboard
@@ -62,6 +64,7 @@ export interface Initiative {
   ban_chu_tri: string;
   file_url?: string;
   created_by_email?: string;
+  lien_ket_csdl?: string[];
 }
 
 export interface StatCardProps {
@@ -75,5 +78,63 @@ export interface InitiativeCardProps {
   initiative: Initiative;
   onEdit: (initiative: Initiative) => void;
   onDelete: (initiativeName: string) => void;
+  onViewDatabases: (initiative: Initiative) => void;
   currentUserEmail: string;
+}
+
+export interface DatabaseDetailModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  initiative: Initiative | null;
+}
+
+
+// --- Types from Database Management App ---
+
+export enum UserRole {
+  VIEWER = 'Viewer',
+  DATA_ENTRY = 'Data Entry',
+  ADMIN = 'Admin',
+}
+
+export enum KeyType {
+  NONE = 'None',
+  PK = 'PK',
+  FK = 'FK',
+}
+
+export interface Field {
+  id: string;
+  name: string;
+  description: string;
+  source: string;
+  storagePeriod: string;
+  dataRange: string;
+  format: string;
+  unit: string;
+  keyType: KeyType;
+  relationship: string;
+}
+
+export interface Table {
+  id: string;
+  name: string;
+  description: string;
+  source: string;
+  updateFrequency: string;
+  fields: Field[];
+}
+
+export interface Database {
+  id: string;
+  name: string;
+  description: string;
+  domain: string;
+  keywords: string[];
+  responsibleDept: string;
+  createdBy: string;
+  creatorEmail: string;
+  createdAt?: string;
+  updatedAt?: string;
+  tables: Table[];
 }
