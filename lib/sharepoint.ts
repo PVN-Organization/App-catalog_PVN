@@ -51,10 +51,16 @@ export const uploadFileToSharePoint = async (file: File): Promise<string> => {
     return fileUrl;
 
   } catch (error) {
-    console.error('Lỗi khi tải tệp lên:', error);
-    if (error instanceof Error) {
-        throw new Error(`Lỗi tải tệp lên: ${error.message}`);
+    console.error(`Lỗi khi tải tệp "${file.name}" lên:`, error);
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      // Lỗi này thường chỉ ra vấn đề về CORS hoặc mạng.
+      throw new Error('Lỗi mạng hoặc CORS. Không thể kết nối đến máy chủ tải lên. Vui lòng kiểm tra lại cấu hình CORS trên máy chủ n8n.');
     }
-    throw new Error('Lỗi không xác định khi tải tệp lên.');
+    if (error instanceof Error) {
+        // Ném lại các lỗi khác với thông báo chung hơn nhưng bao gồm cả lỗi gốc.
+        throw new Error(`Tải tệp lên thất bại: ${error.message}`);
+    }
+    // Fallback cho các lỗi không xác định.
+    throw new Error('Một lỗi không xác định đã xảy ra khi tải tệp lên.');
   }
 };

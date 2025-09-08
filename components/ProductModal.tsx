@@ -31,10 +31,35 @@ const mapInitiativeToProduct = (initiative: Initiative): Product => ({
   nhanSuPhuTrach: initiative.nhan_su_phu_trach || '',
 });
 
+const getFileNameFromUrl = (url: string): string => {
+  try {
+    const urlObject = new URL(url);
+    const fileNameFromParam = urlObject.searchParams.get('file');
+    if (fileNameFromParam) {
+      return decodeURIComponent(fileNameFromParam);
+    }
+    
+    const pathname = urlObject.pathname;
+    const lastPart = pathname.split('/').pop();
+    if (lastPart) {
+      return decodeURIComponent(lastPart);
+    }
+
+    return 'Tệp không xác định';
+  } catch (e) {
+    try {
+        const simpleMatch = url.split(/[\\/]/).pop()?.split('?')[0];
+        return decodeURIComponent(simpleMatch || 'Tệp không xác định');
+    } catch {
+        return 'Tệp không xác định';
+    }
+  }
+};
+
 
 const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, isLoading, initiativeToEdit, allDatabases }) => {
   const [product, setProduct] = useState<Product>(initialProductState);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -63,12 +88,23 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      // Nối các tệp mới vào danh sách hiện có
+      setFiles(prevFiles => [...prevFiles, ...Array.from(e.target.files)]);
       setError(null);
-    } else {
-      setFile(null);
+      // Đặt lại giá trị của input để cho phép chọn lại cùng một tệp sau khi xóa
+      if (e.target) {
+        e.target.value = '';
+      }
     }
+  };
+
+  const handleRemoveFile = (indexToRemove: number) => {
+    setFiles(prevFiles => prevFiles.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handleClearNewFiles = () => {
+    setFiles([]);
   };
 
   const handleFormSubmit = useCallback(async (e: React.FormEvent) => {
@@ -79,16 +115,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
     }
     
     setError(null);
-    await onSubmit(product, file);
-  }, [product, file, onSubmit]);
+    await onSubmit(product, files);
+  }, [product, files, onSubmit]);
 
   const handleClose = () => {
     if (isLoading) return;
-    setFile(null);
+    setFiles([]);
     setError(null);
-    if(fileInputRef.current) {
-        fileInputRef.current.value = '';
-    }
     onClose();
   };
 
@@ -161,19 +194,62 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
                 </FormSection>
             </div>
             <div className="md:col-span-2">
-                 <FormSection label="Tệp đính kèm">
-                   <input 
-                     ref={fileInputRef}
-                     type="file" 
-                     onChange={handleFileChange}
-                     className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-                  />
-                  {!file && initiativeToEdit?.file_url && (
-                    <p className="text-sm text-gray-500 mt-2">
-                        Tệp hiện tại: <a href={initiativeToEdit.file_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{initiativeToEdit.file_url.split(/[\\/]/).pop()}</a>
-                    </p>
+                <FormSection label="Tệp đính kèm">
+                   <div className="flex items-center">
+                    <label htmlFor="file-upload" className="cursor-pointer px-4 py-2 bg-indigo-50 text-indigo-700 font-semibold text-sm rounded-full border-0 hover:bg-indigo-100 transition-colors">
+                        Choose Files
+                    </label>
+                    <input 
+                        id="file-upload"
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        onChange={handleFileChange}
+                        className="sr-only"
+                    />
+                   </div>
+                  {isEditMode && initiativeToEdit?.file_urls && initiativeToEdit.file_urls.length > 0 && (
+                    <div className="mt-4">
+                        <p className="text-sm font-medium text-gray-600">Tệp hiện tại:</p>
+                        <ul className="list-disc list-inside text-sm text-gray-500 mt-1 space-y-1">
+                            {initiativeToEdit.file_urls.map(url => (
+                                <li key={url}>
+                                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+                                        {getFileNameFromUrl(url)}
+                                    </a>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
                   )}
-                  {file && <p className="text-sm text-gray-500 mt-2">Tệp mới: {file.name}</p>}
+                  <div className="mt-4">
+                    <div className="flex justify-between items-center">
+                        <p className="text-sm font-medium text-gray-600">Tệp mới sẽ được thêm ({files.length}):</p>
+                        {files.length > 0 && 
+                            <button type="button" onClick={handleClearNewFiles} className="text-xs text-red-600 hover:text-red-800 font-semibold">Xóa tất cả</button>
+                        }
+                    </div>
+                    <div className="mt-2">
+                        {files.length > 0 ? (
+                            <ul className="space-y-1 max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-md border">
+                                {files.map((f, index) => (
+                                    <li key={`${f.name}-${index}`} className="flex justify-between items-center text-sm text-gray-700 p-1 rounded hover:bg-gray-100">
+                                        <span className="truncate pr-2">{f.name}</span>
+                                        <button type="button" onClick={() => handleRemoveFile(index)} className="flex-shrink-0 text-red-500 hover:text-red-700 p-1 rounded-full" title="Xóa tệp này">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <div className="text-center p-4 border-2 border-dashed rounded-md">
+                                <p className="text-sm text-gray-400 italic">Chưa chọn tệp mới.</p>
+                            </div>
+                        )}
+                    </div>
+                  </div>
                 </FormSection>
             </div>
 

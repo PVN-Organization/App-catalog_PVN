@@ -46,7 +46,7 @@ export interface Product {
 export interface ProductModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (product: Product, file: File | null) => Promise<void>;
+  onSubmit: (product: Product, files: File[]) => Promise<void>;
   isLoading: boolean;
   initiativeToEdit?: Initiative | null;
   allDatabases: string[];
@@ -64,7 +64,7 @@ export interface Initiative {
   linh_vuc: string;
   link_truy_cap: string;
   ban_chu_tri: string;
-  file_url?: string;
+  file_urls?: string[];
   created_by_email?: string;
   lien_ket_csdl?: string[];
   nhan_su_dau_moi?: string;

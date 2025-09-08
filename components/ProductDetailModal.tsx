@@ -41,6 +41,31 @@ const DetailItem: React.FC<{ icon: React.ReactNode; label: string; value?: strin
   );
 };
 
+const getFileNameFromUrl = (url: string): string => {
+  try {
+    const urlObject = new URL(url);
+    const fileNameFromParam = urlObject.searchParams.get('file');
+    if (fileNameFromParam) {
+      return decodeURIComponent(fileNameFromParam);
+    }
+    
+    const pathname = urlObject.pathname;
+    const lastPart = pathname.split('/').pop();
+    if (lastPart) {
+      return decodeURIComponent(lastPart);
+    }
+
+    return 'Tệp không xác định';
+  } catch (e) {
+    try {
+        const simpleMatch = url.split(/[\\/]/).pop()?.split('?')[0];
+        return decodeURIComponent(simpleMatch || 'Tệp không xác định');
+    } catch {
+        return 'Tệp không xác định';
+    }
+  }
+};
+
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ isOpen, onClose, initiative }) => {
   if (!isOpen || !initiative) return null;
 
@@ -64,6 +89,23 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ isOpen, onClose
               <DetailItem icon={<DocumentTextIcon />} label="Mô tả" value={initiative.mo_ta} />
               <DetailItem icon={<CogIcon />} label="Công nghệ" value={initiative.cong_nghe} />
               <DetailItem icon={<DatabaseIcon className="w-6 h-6"/>} label="CSDL liên kết" value={initiative.lien_ket_csdl && initiative.lien_ket_csdl.length > 0 ? initiative.lien_ket_csdl : null} />
+               {initiative.file_urls && initiative.file_urls.length > 0 && (
+                    <div className="flex items-start">
+                        <div className="flex-shrink-0 text-pvn-brand-blue"><LinkIcon /></div>
+                        <div className="ml-3 min-w-0">
+                            <p className="text-sm font-semibold text-gray-500">Tệp đính kèm</p>
+                            <ul className="list-disc list-inside mt-1 space-y-1">
+                            {initiative.file_urls.map(url => (
+                                <li key={url}>
+                                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-base text-blue-600 hover:underline break-all">
+                                        {getFileNameFromUrl(url)}
+                                    </a>
+                                </li>
+                            ))}
+                            </ul>
+                        </div>
+                    </div>
+               )}
                {initiative.link_truy_cap ? (
                 <div className="flex items-start">
                   <div className="flex-shrink-0 text-pvn-brand-blue"><LinkIcon /></div>
