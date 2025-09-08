@@ -71,6 +71,7 @@ interface CatalogViewProps {
   handleViewDatabases: (initiative: Initiative) => void;
   handleAccessInitiative: (initiative: Initiative) => void;
   handleDoubleClick: (initiative: Initiative) => void;
+  isSuperAdmin: boolean;
   currentUserEmail: string;
 }
 
@@ -79,7 +80,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({
   searchTerm, setSearchTerm, selectedDept, setSelectedDept,
   selectedStatus, setSelectedStatus, sortOption, setSortOption,
   filterOptions, openModal, fetchInitiatives, handleEdit, handleDelete,
-  handleViewDatabases, handleAccessInitiative, handleDoubleClick, currentUserEmail,
+  handleViewDatabases, handleAccessInitiative, handleDoubleClick, currentUserEmail, isSuperAdmin,
 }) => (
     <>
          {/* Stats */}
@@ -172,6 +173,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({
                         onAccess={handleAccessInitiative}
                         onDoubleClick={handleDoubleClick}
                         currentUserEmail={currentUserEmail}
+                        isSuperAdmin={isSuperAdmin}
                     />
                 ))}
             </div>
@@ -188,7 +190,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
   const [isError, setIsError] = useState(false);
   
   const [initiatives, setInitiatives] = useState<Initiative[]>([]);
-  const [allDatabases, setAllDatabases] = useState<Pick<Database, 'id' | 'name'>[]>([]);
+  const [allDatabases, setAllDatabases] = useState<string[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   
   const [detailModalInitiative, setDetailModalInitiative] = useState<Initiative | null>(null);
@@ -197,10 +199,10 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDept, setSelectedDept] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
-  const [selectedClassification, setSelectedClassification] = useState('');
   const [sortOption, setSortOption] = useState('name-asc');
 
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [currentView, setCurrentView] = useState('catalog');
 
   const parseDatabaseLinks = (links: unknown): string[] => {
@@ -208,11 +210,23 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
           return links.filter(l => typeof l === 'string');
       }
       if (typeof links === 'string') {
+          // First, try to parse as JSON, which is the robust format.
+          if (links.startsWith('[') && links.endsWith(']')) {
+              try {
+                  const parsed = JSON.parse(links);
+                  if (Array.isArray(parsed)) {
+                      return parsed.filter(l => typeof l === 'string');
+                  }
+              } catch (e) {
+                  // Not valid JSON, fall through to legacy format.
+              }
+          }
+          
+          // Fallback for legacy PostgreSQL array string format '{...}'
           if (links.startsWith('{') && links.endsWith('}')) {
               const cleaned = links.slice(1, -1);
               if (cleaned === '') return [];
 
-              // Advanced parsing for comma-separated values, potentially quoted
               const result = [];
               let current = '';
               let inQuotes = false;
@@ -237,6 +251,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
   const checkAdminStatus = useCallback(async (userEmail: string) => {
     if (userEmail === 'vpi.sonnt@pvn.vn') {
         setIsAdmin(true);
+        setIsSuperAdmin(true);
         return;
     }
     try {
@@ -249,9 +264,11 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
             console.error('Error checking admin status:', error);
         }
         setIsAdmin(!!data);
+        setIsSuperAdmin(false);
     } catch(err) {
         console.error('Failed to query admins table:', err);
         setIsAdmin(false);
+        setIsSuperAdmin(false);
     }
   }, []);
 
@@ -326,7 +343,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                 ban_chu_tri: item.ban_chu_tri || '',
                 file_url: item.file_url || '',
                 created_by_email: item.created_by_email || '',
-                lien_ket_csdl: parseDatabaseLinks(item.lien_ket_csdl),
+                lien_ket_csdl: item.lien_ket_csdl === null ? undefined : parseDatabaseLinks(item.lien_ket_csdl),
                 nhan_su_dau_moi: item.nhan_su_dau_moi || '',
                 nhan_su_phu_trach: item.nhan_su_phu_trach || '',
             }));
@@ -347,21 +364,21 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     }
   }, []);
 
-   const fetchAllDatabases = useCallback(async () => {
+    const fetchAllDatabases = useCallback(async () => {
         try {
             const { data, error } = await databaseSupabase
                 .from('co_so_du_lieu')
                 .select('ten_csdl');
 
             if (error) {
-                console.warn(`Could not fetch database list: ${error.message}`);
-                return;
+                throw error;
             }
+
             if (data) {
-                setAllDatabases(data.map(db => ({ id: db.ten_csdl, name: db.ten_csdl })));
+                setAllDatabases(data.map(db => db.ten_csdl).sort());
             }
         } catch (error) {
-            console.warn('Failed to fetch database list.', error);
+            console.error('Failed to fetch database list.', error);
         }
     }, []);
 
@@ -381,35 +398,46 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
     const normalize = (str: string): string => {
         if (!str) return '';
-        return str.toLowerCase()
+        return str
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Bỏ dấu tiếng Việt
+            .toLowerCase()
             .replace(/cơ sở dữ liệu|csdl|hệ thống|ứng dụng|pvn|quản lý/g, '')
             .replace(/sổ tay/g, 'sotay') 
             .replace(/\s+/g, ' ').trim();
     };
     
-    // Create a one-time reconciled list
+    let hasChanges = false;
     const reconciledInitiatives = initiatives.map(initiative => {
-        const linkedDbs = new Set<string>(initiative.lien_ket_csdl || []);
-        
-        const initiativeNormName = normalize(initiative.ten_ngan_gon || initiative.ten_chinh_thuc);
-        if (initiativeNormName) {
-            allDatabases.forEach(db => {
-                const dbNormName = normalize(db.name);
-                if (dbNormName && (dbNormName.includes(initiativeNormName) || initiativeNormName.includes(dbNormName))) {
-                    linkedDbs.add(db.id);
-                }
-            });
+        if (initiative.lien_ket_csdl === undefined) {
+            hasChanges = true;
+            const linkedDbs = new Set<string>();
+            const initiativeNormName = normalize(initiative.ten_ngan_gon || initiative.ten_chinh_thuc);
+            
+            if (initiativeNormName) {
+                allDatabases.forEach(dbName => {
+                    const dbNormName = normalize(dbName);
+                    if (dbNormName && (dbNormName.includes(initiativeNormName) || initiativeNormName.includes(dbNormName))) {
+                        linkedDbs.add(dbName);
+                    }
+                });
+            }
+            
+            return {
+                ...initiative,
+                lien_ket_csdl: Array.from(linkedDbs)
+            };
         }
         
         return {
             ...initiative,
-            lien_ket_csdl: Array.from(linkedDbs)
+            lien_ket_csdl: initiative.lien_ket_csdl || []
         };
     });
     
-    setInitiatives(reconciledInitiatives);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFetching, allDatabases]); // Run only when fetching completes or DB list changes
+    if(hasChanges) {
+        setInitiatives(reconciledInitiatives);
+    }
+  }, [isFetching, allDatabases, initiatives]);
 
   const filterOptions = useMemo(() => {
     const departments = [...new Set(initiatives.map(item => item.ban_chu_tri).filter(Boolean))].sort();
@@ -417,253 +445,212 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
     const classifications = [...new Set(initiatives.map(item => item.phan_loai).filter(Boolean))].sort();
     return { departments, statuses, classifications };
   }, [initiatives]);
-
-  const filteredInitiatives = useMemo(() => {
-    const filtered = initiatives.filter(item => {
-      const lowerSearchTerm = searchTerm.toLowerCase();
-      const matchesSearch = (
-        (item.ten_ngan_gon || '').toLowerCase().includes(lowerSearchTerm) ||
-        (item.ten_chinh_thuc || '').toLowerCase().includes(lowerSearchTerm) ||
-        (item.mo_ta || '').toLowerCase().includes(lowerSearchTerm)
-      );
-      const matchesDept = !selectedDept || item.ban_chu_tri === selectedDept;
-      const matchesStatus = !selectedStatus || item.giai_doan === selectedStatus;
-      const matchesClassification = !selectedClassification || item.phan_loai === selectedClassification;
-
-      return matchesSearch && matchesDept && matchesStatus && matchesClassification;
-    });
-
-    // Add sorting logic
-    return filtered.sort((a, b) => {
-        switch (sortOption) {
-            case 'name-asc':
-                return (a.ten_ngan_gon || a.ten_chinh_thuc).localeCompare(b.ten_ngan_gon || b.ten_chinh_thuc);
-            case 'name-desc':
-                return (b.ten_ngan_gon || b.ten_chinh_thuc).localeCompare(a.ten_ngan_gon || a.ten_chinh_thuc);
-            case 'dept-asc':
-                return (a.ban_chu_tri || '').localeCompare(b.ban_chu_tri || '');
-            case 'status-asc':
-                return (a.giai_doan || '').localeCompare(b.giai_doan || '');
-            default:
-                return 0;
-        }
-    });
-
-  }, [searchTerm, selectedDept, selectedStatus, selectedClassification, initiatives, sortOption]);
   
-  const stats = useMemo(() => {
-    const data = filteredInitiatives;
-    const total = data.length;
-    const departments = [...new Set(data.map(item => item.ban_chu_tri).filter(Boolean))].length;
-    const deployed = data.filter(item => item.giai_doan === 'Đã đưa vào sử dụng').length;
-    const inProgress = data.filter(item => ['Đang triển khai', 'Đang phát triển'].includes(item.giai_doan)).length;
-    return { total, departments, deployed, inProgress };
-  }, [filteredInitiatives]);
+  const filteredInitiatives = useMemo(() => {
+    return initiatives
+        .filter(item => {
+            const searchTermLower = searchTerm.toLowerCase();
+            const matchesSearch = searchTermLower === '' ||
+                item.ten_chinh_thuc.toLowerCase().includes(searchTermLower) ||
+                item.ten_ngan_gon.toLowerCase().includes(searchTermLower) ||
+                item.mo_ta.toLowerCase().includes(searchTermLower);
 
-  const handleSave = useCallback(async (product: Product, file: File | null) => {
-    setIsLoading(true);
-    setStatusMessage('Đang xử lý...');
-    setIsError(false);
+            const matchesDept = selectedDept === '' || item.ban_chu_tri === selectedDept;
+            const matchesStatus = selectedStatus === '' || item.giai_doan === selectedStatus;
 
-    try {
-        let fileUrl: string | null = editingInitiative ? editingInitiative.file_url || null : null;
-      
-        if (file) {
-            setStatusMessage('Đang tải tệp lên SharePoint...');
-            fileUrl = await uploadFileToSharePoint(file);
-        }
+            return matchesSearch && matchesDept && matchesStatus;
+        })
+        .sort((a, b) => {
+            switch (sortOption) {
+                case 'name-desc':
+                    return b.ten_ngan_gon.localeCompare(a.ten_ngan_gon);
+                case 'dept-asc':
+                    return a.ban_chu_tri.localeCompare(b.ban_chu_tri);
+                case 'status-asc':
+                    return a.giai_doan.localeCompare(b.giai_doan);
+                case 'name-asc':
+                default:
+                    return a.ten_ngan_gon.localeCompare(b.ten_ngan_gon);
+            }
+        });
+    }, [initiatives, searchTerm, selectedDept, selectedStatus, sortOption]);
 
-        const productDataForDb = {
-            ten_chinh_thuc: product.tieuDe,
-            ten_ngan_gon: product.tenNgan,
-            ban_chu_tri: product.banChuTri,
-            giai_doan: product.giaiDoan,
-            phan_loai: product.phanLoai,
-            cong_nghe: product.congNghe,
-            link_truy_cap: product.lienKet,
-            mo_ta: product.moTa,
-            file_url: fileUrl,
-            lien_ket_csdl: product.lien_ket_csdl,
-            nhan_su_dau_moi: product.nhanSuDauMoi,
-            nhan_su_phu_trach: product.nhanSuPhuTrach,
-        };
-        
-        const action = editingInitiative ? 'EDIT_INITIATIVE' : 'ADD_INITIATIVE';
-        const logDetails = { initiativeName: product.tieuDe };
+    const stats = useMemo(() => ({
+        total: initiatives.length,
+        departments: new Set(initiatives.map(i => i.ban_chu_tri).filter(Boolean)).size,
+        deployed: initiatives.filter(i => i.giai_doan === 'Đã đưa vào sử dụng').length,
+        inProgress: initiatives.filter(i => i.giai_doan === 'Đang triển khai').length,
+    }), [initiatives]);
 
-        if (editingInitiative) {
-            setStatusMessage('Đang cập nhật thông tin sản phẩm...');
-            const { error: updateError, count } = await supabase
-                .from('Catalog_data')
-                .update(productDataForDb)
-                .eq('ten_chinh_thuc', editingInitiative.ten_chinh_thuc);
-            
-            if (updateError) throw new Error(`Lỗi cập nhật dữ liệu: ${updateError.message}`);
-            if (count === 0) throw new Error('Cập nhật thất bại. Không có sản phẩm nào được cập nhật. Nguyên nhân có thể là do bạn không có quyền (chính sách RLS) hoặc sản phẩm không tồn tại.');
-
-            setStatusMessage('Cập nhật sản phẩm thành công! Đang làm mới...');
-        } else {
-            setStatusMessage('Đang lưu thông tin sản phẩm...');
-            const dataToInsert = { ...productDataForDb, created_by_email: session.user.email };
-            const { error: insertError } = await supabase.from('Catalog_data').insert([dataToInsert]);
-            if (insertError) throw new Error(`Lỗi lưu dữ liệu: ${insertError.message}`);
-            setStatusMessage('Thêm sản phẩm thành công! Đang làm mới...');
-        }
-
-        logAction(supabase, session.user.email, action, logDetails);
+    const handleSubmit = async (product: Product, file: File | null) => {
+        setIsLoading(true);
+        setStatusMessage(editingInitiative ? 'Đang cập nhật sản phẩm...' : 'Đang thêm sản phẩm...');
         setIsError(false);
-        closeModal();
-        await fetchInitiatives();
-        setTimeout(() => setStatusMessage(''), 3000);
 
-    } catch (error) {
-      console.error('Lỗi khi lưu sản phẩm:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Vui lòng kiểm tra console.';
-      setStatusMessage(`Lưu sản phẩm thất bại: ${errorMessage}`);
-      setIsError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [editingInitiative, fetchInitiatives, session.user.email]);
+        try {
+            let fileUrl = editingInitiative?.file_url || '';
+            if (file) {
+                fileUrl = await uploadFileToSharePoint(file);
+            }
 
-  const handleDelete = useCallback(async (initiativeName: string) => {
-    const initiativeToDelete = initiatives.find(i => i.ten_chinh_thuc === initiativeName);
-    if (!initiativeToDelete) {
-      setStatusMessage('Lỗi: Không tìm thấy sản phẩm để xóa.');
-      setIsError(true);
-      return;
-    }
+            const productData = {
+                ten_chinh_thuc: product.tieuDe,
+                ten_ngan_gon: product.tenNgan,
+                mo_ta: product.moTa,
+                phan_loai: product.phanLoai,
+                cong_nghe: product.congNghe,
+                giai_doan: product.giaiDoan,
+                link_truy_cap: product.lienKet,
+                ban_chu_tri: product.banChuTri,
+                file_url: fileUrl,
+                lien_ket_csdl: product.lien_ket_csdl,
+                nhan_su_dau_moi: product.nhanSuDauMoi,
+                nhan_su_phu_trach: product.nhanSuPhuTrach,
+                created_by_email: editingInitiative?.created_by_email || session.user.email,
+            };
 
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${initiativeToDelete.ten_ngan_gon || initiativeToDelete.ten_chinh_thuc}"? Hành động này không thể hoàn tác.`)) {
-      return;
-    }
+            let result;
+            if (editingInitiative) {
+                result = await supabase
+                    .from('Catalog_data')
+                    .update(productData)
+                    .eq('ten_chinh_thuc', editingInitiative.ten_chinh_thuc);
+            } else {
+                result = await supabase
+                    .from('Catalog_data')
+                    .insert([productData]);
+            }
 
-    setIsLoading(true);
-    setStatusMessage('Đang xóa sản phẩm...');
-    setIsError(false);
+            if (result.error) {
+                throw result.error;
+            }
 
-    try {
-      const { error: deleteError, count } = await supabase
-        .from('Catalog_data')
-        .delete()
-        .eq('ten_chinh_thuc', initiativeName);
+            setStatusMessage(editingInitiative ? 'Sản phẩm đã được cập nhật thành công!' : 'Sản phẩm đã được thêm thành công!');
+            await fetchInitiatives();
+            closeModal();
+            
+            const action = editingInitiative ? 'EDIT_INITIATIVE' : 'ADD_INITIATIVE';
+            logAction(supabase, session.user.email, action, { initiativeName: product.tieuDe });
 
-      if (deleteError) throw new Error(`Lỗi khi xóa: ${deleteError.message}`);
-      if (count === 0) throw new Error('Xóa thất bại. Không có sản phẩm nào bị xóa. Nguyên nhân có thể là do bạn không có quyền (chính sách RLS) hoặc sản phẩm không tồn tại.');
-      
-      logAction(supabase, session.user.email, 'DELETE_INITIATIVE', { initiativeName });
-      setStatusMessage('Xóa sản phẩm thành công! Đang làm mới...');
-      setIsError(false);
-      await fetchInitiatives();
-      setTimeout(() => setStatusMessage(''), 3000);
+        } catch (error: any) {
+            setStatusMessage(`Lỗi: ${error.message}`);
+            setIsError(true);
+            console.error('Error submitting product:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-    } catch (error) {
-      console.error('Lỗi khi xóa sản phẩm:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Vui lòng kiểm tra console.';
-      setStatusMessage(`Xóa sản phẩm thất bại: ${errorMessage}`);
-      setIsError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [initiatives, fetchInitiatives, session.user.email]);
+    const handleDelete = async (initiativeName: string) => {
+        if (window.confirm(`Bạn có chắc chắn muốn xóa sản phẩm "${initiativeName}" không?`)) {
+            setIsLoading(true);
+            setStatusMessage('Đang xóa sản phẩm...');
+            
+            const { error } = await supabase
+                .from('Catalog_data')
+                .delete()
+                .eq('ten_chinh_thuc', initiativeName);
+
+            if (error) {
+                alert(`Lỗi khi xóa: ${error.message}`);
+                setStatusMessage(`Lỗi khi xóa: ${error.message}`);
+            } else {
+                setStatusMessage('Sản phẩm đã được xóa.');
+                logAction(supabase, session.user.email, 'DELETE_INITIATIVE', { initiativeName });
+                await fetchInitiatives();
+            }
+            setIsLoading(false);
+        }
+    };
+
+    const currentUserEmail = session.user.email || 'unknown@pvn.vn';
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 text-gray-800">
+      <header className="bg-white shadow-md sticky top-0 z-40">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
-              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-              <h1 className="text-xl font-bold text-gray-800">
-                 {currentView === 'catalog' ? 'Hệ thống quản lý ứng dụng số' : 'Admin Dashboard'}
-              </h1>
+              <img src="https://i.ibb.co/nMdwMV4S/pvn-log.png" alt="Logo PVN" className="h-10" />
+              <h1 className="text-xl font-bold text-pvn-blue">Hệ thống quản lý ứng dụng số</h1>
             </div>
+            {isAdmin && (
+                <div className="flex items-center space-x-2 bg-gray-100 p-1 rounded-lg">
+                    <button onClick={() => setCurrentView('catalog')} className={`px-3 py-1 text-sm font-semibold rounded-md transition ${currentView === 'catalog' ? 'bg-white text-pvn-blue shadow' : 'text-gray-600 hover:bg-gray-200'}`}>
+                        Catalog
+                    </button>
+                    <button onClick={() => setCurrentView('admin')} className={`px-3 py-1 text-sm font-semibold rounded-md transition ${currentView === 'admin' ? 'bg-white text-pvn-blue shadow' : 'text-gray-600 hover:bg-gray-200'}`}>
+                        Admin
+                    </button>
+                </div>
+            )}
             <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-600 hidden sm:block">
-                  Xin chào, <span className="font-semibold">{session.user.email}</span>
-                </span>
-                {isAdmin && (
-                  <button
-                    onClick={() => setCurrentView(currentView === 'catalog' ? 'admin' : 'catalog')}
-                    className="px-4 py-2 bg-indigo-50 text-indigo-700 font-semibold rounded-lg text-sm hover:bg-indigo-100 transition flex items-center gap-2"
-                    title={currentView === 'catalog' ? 'Go to Admin Panel' : 'Go to Catalog View'}
-                  >
-                    <ShieldCheckIcon />
-                    {currentView === 'catalog' ? 'Admin Panel' : 'Catalog View'}
-                  </button>
-                )}
-                <button 
-                  onClick={handleLogout} 
-                  className="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg text-sm hover:bg-red-600 transition"
-                  title="Đăng xuất"
-                >
-                  Đăng xuất
-                </button>
+              <div className="text-right">
+                <p className="text-sm font-semibold text-gray-800">{session.user.user_metadata.full_name || session.user.email}</p>
+                <p className="text-xs text-gray-500">{session.user.email}</p>
+              </div>
+              <button onClick={handleLogout} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-transparent rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                Đăng xuất
+              </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {currentView === 'catalog' ? (
-            <CatalogView
-              stats={stats}
-              isFetching={isFetching}
-              statusMessage={statusMessage}
-              isError={isError}
-              filteredInitiatives={filteredInitiatives}
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-              selectedDept={selectedDept}
-              setSelectedDept={setSelectedDept}
-              selectedStatus={selectedStatus}
-              setSelectedStatus={setSelectedStatus}
-              sortOption={sortOption}
-              setSortOption={setSortOption}
-              filterOptions={filterOptions}
-              openModal={openModal}
-              fetchInitiatives={fetchInitiatives}
-              handleEdit={handleEdit}
-              handleDelete={handleDelete}
-              handleViewDatabases={handleViewDatabases}
-              handleAccessInitiative={handleAccessInitiative}
-              handleDoubleClick={handleShowDetails}
-              currentUserEmail={session.user.email!}
+      <main className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
+        {currentView === 'catalog' ? (
+             <CatalogView
+                stats={stats}
+                isFetching={isFetching}
+                statusMessage={statusMessage}
+                isError={isError}
+                filteredInitiatives={filteredInitiatives}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                selectedDept={selectedDept}
+                setSelectedDept={setSelectedDept}
+                selectedStatus={selectedStatus}
+                setSelectedStatus={setSelectedStatus}
+                sortOption={sortOption}
+                setSortOption={setSortOption}
+                filterOptions={filterOptions}
+                openModal={openModal}
+                fetchInitiatives={fetchInitiatives}
+                handleEdit={handleEdit}
+                handleDelete={handleDelete}
+                handleViewDatabases={handleViewDatabases}
+                handleAccessInitiative={handleAccessInitiative}
+                handleDoubleClick={handleShowDetails}
+                currentUserEmail={currentUserEmail}
+                isSuperAdmin={isSuperAdmin}
             />
-          ) : (
-            <AdminDashboard session={session} />
-          )}
+        ) : currentView === 'admin' && isAdmin ? (
+          <AdminDashboard session={session} />
+        ) : (
+          <div className="text-center p-8">
+            <p>Redirecting...</p>
+          </div>
+        )}
       </main>
 
-      <ProductModal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        onSubmit={handleSave}
+      <ProductModal 
+        isOpen={isModalOpen} 
+        onClose={closeModal} 
+        onSubmit={handleSubmit} 
         isLoading={isLoading}
         initiativeToEdit={editingInitiative}
         allDatabases={allDatabases}
       />
-      
-      <DatabaseDetailModal
-        isOpen={!!selectedInitiativeForDbView}
-        onClose={closeDbModal}
-        initiative={selectedInitiativeForDbView}
+      <DatabaseDetailModal 
+        isOpen={!!selectedInitiativeForDbView} 
+        onClose={closeDbModal} 
+        initiative={selectedInitiativeForDbView} 
       />
-      
-      <ProductDetailModal
+       <ProductDetailModal
         isOpen={!!detailModalInitiative}
         onClose={closeDetailModal}
         initiative={detailModalInitiative}
       />
-
-       {/* Status Snackbar */}
-        {statusMessage && !isFetching && (
-            <div className={`fixed bottom-5 right-5 px-6 py-3 rounded-lg shadow-lg text-white ${isError ? 'bg-red-500' : 'bg-green-500'}`}>
-                {statusMessage}
-            </div>
-        )}
     </div>
   );
 };

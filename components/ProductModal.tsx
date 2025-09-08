@@ -51,14 +51,15 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
   }, [initiativeToEdit, isEditMode, isOpen]);
 
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setProduct(prev => ({ ...prev, [name]: value }));
-  };
-  
-  const handleDatabaseChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
-    setProduct(prev => ({ ...prev, lien_ket_csdl: selectedOptions }));
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+
+    if (type === 'select-multiple') {
+      const selectedOptions = Array.from((e.target as HTMLSelectElement).selectedOptions, option => option.value);
+      setProduct(prev => ({ ...prev, [name]: selectedOptions }));
+    } else {
+      setProduct(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,10 +153,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSubmit, 
                         multiple
                         name="lien_ket_csdl"
                         value={product.lien_ket_csdl}
-                        onChange={handleDatabaseChange}
+                        onChange={handleChange}
                         className="block w-full h-32 px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     >
-                        {allDatabases.map(db => <option key={db.id} value={db.id}>{db.name}</option>)}
+                        {allDatabases.map(dbName => <option key={dbName} value={dbName}>{dbName}</option>)}
                     </select>
                 </FormSection>
             </div>
