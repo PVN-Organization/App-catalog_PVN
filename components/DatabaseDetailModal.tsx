@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-// FIX: Import `KeyType` as a value, not just a type, to allow its use in runtime logic.
-import type { DatabaseDetailModalProps, Database, Table, Field } from '../types';
-import { KeyType } from '../types';
+import { KeyType, type DatabaseDetailModalProps, type Database, type Table, type Field } from '../types';
 import { databaseSupabase } from '../lib/databaseSupabaseClient';
 import { DatabaseIcon, ChevronDownIcon, ChevronRightIcon } from './icons/DatabaseIcons';
 
@@ -83,6 +81,7 @@ const DatabaseDetailModal: React.FC<DatabaseDetailModalProps> = ({ isOpen, onClo
             setError(null);
 
             try {
+                // FIX: Query by 'ten_csdl' as it is the unique identifier stored in the initiative's links.
                 const { data, error: dbError } = await databaseSupabase
                     .from('co_so_du_lieu')
                     .select(`
@@ -99,7 +98,7 @@ const DatabaseDetailModal: React.FC<DatabaseDetailModalProps> = ({ isOpen, onClo
                 if (dbError) throw dbError;
 
                 const mappedData: Database[] = (data || []).map((db: any) => ({
-                    id: db.ten_csdl,
+                    id: db.ten_csdl, // FIX: Use 'ten_csdl' as the unique ID for consistency.
                     name: db.ten_csdl,
                     description: db.mo_ta,
                     domain: db.linh_vuc?.ten_linh_vuc || db.linh_vuc || 'Không rõ',

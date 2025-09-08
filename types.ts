@@ -49,7 +49,7 @@ export interface ProductModalProps {
   onSubmit: (product: Product, file: File | null) => Promise<void>;
   isLoading: boolean;
   initiativeToEdit?: Initiative | null;
-  allDatabases: Pick<Database, 'id' | 'name'>[];
+  allDatabases: string[];
 }
 
 // New types for Dashboard
@@ -85,6 +85,7 @@ export interface InitiativeCardProps {
   onViewDatabases: (initiative: Initiative) => void;
   onAccess: (initiative: Initiative) => void;
   onDoubleClick: (initiative: Initiative) => void;
+  isSuperAdmin: boolean;
   currentUserEmail: string;
 }
 

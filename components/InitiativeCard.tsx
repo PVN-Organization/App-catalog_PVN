@@ -13,8 +13,9 @@ const getStatusPill = (status?: string) => {
   return <span className={`inline-block flex-shrink-0 ${classes} text-xs font-medium px-2.5 py-1 rounded-full`}>{status || 'Chưa xác định'}</span>;
 };
 
-const InitiativeCard: React.FC<InitiativeCardProps> = ({ initiative, onEdit, onDelete, onViewDatabases, onAccess, onDoubleClick, currentUserEmail }) => {
+const InitiativeCard: React.FC<InitiativeCardProps> = ({ initiative, onEdit, onDelete, onViewDatabases, onAccess, onDoubleClick, currentUserEmail, isSuperAdmin }) => {
   const isOwner = initiative.created_by_email === currentUserEmail;
+  const canEditOrDelete = isOwner || isSuperAdmin;
   const hasLinkedDatabases = initiative.lien_ket_csdl && initiative.lien_ket_csdl.length > 0;
   const linkedDbCount = initiative.lien_ket_csdl?.length || 0;
 
@@ -40,7 +41,7 @@ const InitiativeCard: React.FC<InitiativeCardProps> = ({ initiative, onEdit, onD
         <div className="flex justify-between items-center text-sm">
             {/* Left side: Admin actions */}
             <div className="flex flex-wrap gap-4 items-center">
-                 {isOwner && (
+                 {canEditOrDelete && (
                     <>
                         <button onClick={(e) => { e.stopPropagation(); onEdit(initiative); }} className="text-gray-600 hover:text-blue-600 font-semibold transition flex items-center" title="Chỉnh sửa">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
