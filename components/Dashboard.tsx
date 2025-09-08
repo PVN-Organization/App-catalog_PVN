@@ -3,7 +3,7 @@ import type { Product, Initiative, Database } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import { databaseSupabase } from '../lib/databaseSupabaseClient'; 
 import { uploadFileToSharePoint } from '../lib/sharepoint';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import type { Session, SupabaseClient } from '@supabase/js';
 
 import ProductModal from './ProductModal';
 import DatabaseDetailModal from './DatabaseDetailModal';
@@ -153,7 +153,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({
         ) : isError ? (
             <div className="text-center p-10 bg-red-50 border border-red-200 text-red-700 rounded-xl shadow-md">
                 <p className="font-bold">Đã xảy ra lỗi</p>
-                <p>{statusMessage}</p>
+                <p className="whitespace-pre-wrap">{statusMessage}</p>
                 <button onClick={fetchInitiatives} className="mt-4 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Thử lại</button>
             </div>
         ) : filteredInitiatives.length === 0 ? (
@@ -205,46 +205,48 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [currentView, setCurrentView] = useState('catalog');
 
-  const parseDatabaseLinks = (links: unknown): string[] => {
-      if (Array.isArray(links)) {
-          return links.filter(l => typeof l === 'string');
+  const parsePostgresArray = (arrayString: unknown): string[] => {
+      if (Array.isArray(arrayString)) {
+          return arrayString.filter(l => typeof l === 'string');
       }
-      if (typeof links === 'string') {
-          // First, try to parse as JSON, which is the robust format.
-          if (links.startsWith('[') && links.endsWith(']')) {
-              try {
-                  const parsed = JSON.parse(links);
-                  if (Array.isArray(parsed)) {
-                      return parsed.filter(l => typeof l === 'string');
-                  }
-              } catch (e) {
-                  // Not valid JSON, fall through to legacy format.
+      if (typeof arrayString !== 'string') {
+        return [];
+      }
+      // First, try to parse as JSON, which is the robust format.
+      if (arrayString.startsWith('[') && arrayString.endsWith(']')) {
+          try {
+              const parsed = JSON.parse(arrayString);
+              if (Array.isArray(parsed)) {
+                  return parsed.filter(l => typeof l === 'string');
               }
+          } catch (e) {
+              // Not valid JSON, fall through to legacy format.
           }
-          
-          // Fallback for legacy PostgreSQL array string format '{...}'
-          if (links.startsWith('{') && links.endsWith('}')) {
-              const cleaned = links.slice(1, -1);
-              if (cleaned === '') return [];
+      }
+      
+      // Fallback for legacy PostgreSQL array string format '{...}'
+      if (arrayString.startsWith('{') && arrayString.endsWith('}')) {
+          const cleaned = arrayString.slice(1, -1);
+          if (cleaned === '') return [];
 
-              const result = [];
-              let current = '';
-              let inQuotes = false;
-              for (let i = 0; i < cleaned.length; i++) {
-                  const char = cleaned[i];
-                  if (char === '"') {
-                      inQuotes = !inQuotes;
-                  } else if (char === ',' && !inQuotes) {
-                      result.push(current.trim());
-                      current = '';
-                  } else {
-                      current += char;
-                  }
+          const result = [];
+          let current = '';
+          let inQuotes = false;
+          for (let i = 0; i < cleaned.length; i++) {
+              const char = cleaned[i];
+              if (char === '"') {
+                  inQuotes = !inQuotes;
+              } else if (char === ',' && !inQuotes) {
+                  result.push(current.trim());
+                  current = '';
+              } else {
+                  current += char;
               }
-              result.push(current.trim());
-              return result.filter(Boolean);
           }
+          result.push(current.trim());
+          return result.filter(Boolean);
       }
+      
       return [];
   };
   
@@ -341,9 +343,9 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                     : JSON.stringify(item.linh_vuc) || '',
                 link_truy_cap: item.link_truy_cap || '',
                 ban_chu_tri: item.ban_chu_tri || '',
-                file_url: item.file_url || '',
+                file_urls: parsePostgresArray(item.file_urls),
                 created_by_email: item.created_by_email || '',
-                lien_ket_csdl: item.lien_ket_csdl === null ? undefined : parseDatabaseLinks(item.lien_ket_csdl),
+                lien_ket_csdl: item.lien_ket_csdl === null ? undefined : parsePostgresArray(item.lien_ket_csdl),
                 nhan_su_dau_moi: item.nhan_su_dau_moi || '',
                 nhan_su_phu_trach: item.nhan_su_phu_trach || '',
             }));
@@ -482,16 +484,41 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
         inProgress: initiatives.filter(i => i.giai_doan === 'Đang triển khai').length,
     }), [initiatives]);
 
-    const handleSubmit = async (product: Product, file: File | null) => {
+   const handleSubmit = async (product: Product, files: File[]) => {
         setIsLoading(true);
         setStatusMessage(editingInitiative ? 'Đang cập nhật sản phẩm...' : 'Đang thêm sản phẩm...');
         setIsError(false);
 
         try {
-            let fileUrl = editingInitiative?.file_url || '';
-            if (file) {
-                fileUrl = await uploadFileToSharePoint(file);
+            const newFileUrls: string[] = [];
+            const uploadErrors: { fileName: string; reason: string }[] = [];
+            
+            if (files.length > 0) {
+                // Tải lên tuần tự
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    setStatusMessage(`Đang tải tệp ${i + 1}/${files.length}: ${file.name}...`);
+                    try {
+                        const url = await uploadFileToSharePoint(file);
+                        newFileUrls.push(url);
+                        // Thêm một khoảng chờ ngắn để tránh rate-limiting
+                        if (i < files.length - 1) {
+                           await new Promise(resolve => setTimeout(resolve, 1000));
+                        }
+                    } catch (error) {
+                        const reason = error instanceof Error ? error.message : 'Lỗi không rõ';
+                        uploadErrors.push({ fileName: file.name, reason });
+                    }
+                }
             }
+
+            if (uploadErrors.length > 0) {
+                const errorDetails = uploadErrors.map(err => `  - Tệp "${err.fileName}": ${err.reason}`).join('\n');
+                throw new Error(`Không thể tải lên ${uploadErrors.length}/${files.length} tệp do lỗi sau:\n${errorDetails}`);
+            }
+
+            const existingFileUrls = editingInitiative?.file_urls || [];
+            const allFileUrls = [...existingFileUrls, ...newFileUrls];
 
             const productData = {
                 ten_chinh_thuc: product.tieuDe,
@@ -502,7 +529,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
                 giai_doan: product.giaiDoan,
                 link_truy_cap: product.lienKet,
                 ban_chu_tri: product.banChuTri,
-                file_url: fileUrl,
+                file_urls: allFileUrls,
                 lien_ket_csdl: product.lien_ket_csdl,
                 nhan_su_dau_moi: product.nhanSuDauMoi,
                 nhan_su_phu_trach: product.nhanSuPhuTrach,
@@ -511,11 +538,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session }) => {
 
             let result;
             if (editingInitiative) {
+                setStatusMessage('Đang lưu thay đổi vào cơ sở dữ liệu...');
                 result = await supabase
                     .from('Catalog_data')
                     .update(productData)
                     .eq('ten_chinh_thuc', editingInitiative.ten_chinh_thuc);
             } else {
+                setStatusMessage('Đang lưu sản phẩm mới vào cơ sở dữ liệu...');
                 result = await supabase
                     .from('Catalog_data')
                     .insert([productData]);
