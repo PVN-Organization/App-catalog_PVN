@@ -87,7 +87,6 @@ const DatabaseDetailModal: React.FC<DatabaseDetailModalProps> = ({ isOpen, onClo
                     .select(`
                         *,
                         nguoi_dung(*),
-                        linh_vuc(*),
                         thong_tin_bang (
                             *,
                             thong_tin_truong (*)
